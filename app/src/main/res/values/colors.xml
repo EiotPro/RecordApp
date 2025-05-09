@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- Accent colors for customization -->
+    <color name="accent_blue">#1E88E5</color>
+    <color name="accent_blue_light">#64B5F6</color>
+    <color name="accent_blue_dark">#0D47A1</color>
+    
+    <color name="accent_green">#43A047</color>
+    <color name="accent_green_light">#81C784</color>
+    <color name="accent_green_dark">#1B5E20</color>
+    
+    <color name="accent_purple">#8E24AA</color>
+    <color name="accent_purple_light">#BA68C8</color>
+    <color name="accent_purple_dark">#4A148C</color>
+    
+    <color name="accent_red">#E53935</color>
+    <color name="accent_red_light">#EF5350</color>
+    <color name="accent_red_dark">#B71C1C</color>
+    
+    <color name="accent_orange">#FB8C00</color>
+    <color name="accent_orange_light">#FFA726</color>
+    <color name="accent_orange_dark">#EF6C00</color>
+    
+    <!-- Background colors for cards and UI elements -->
+    <color name="card_background_light">#F5F5F5</color>
+    <color name="card_background_dark">#2D2D2D</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="surface_dark">#121212</color>
+    
+    <!-- Status indicators -->
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FFC107</color>
+    <color name="error">#F44336</color>
+    <color name="info">#2196F3</color>
+</resources>
