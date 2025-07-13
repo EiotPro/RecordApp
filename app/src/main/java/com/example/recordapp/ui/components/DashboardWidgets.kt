@@ -33,6 +33,9 @@ import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.launch
 
+// Define FlashOn icon since it's not available in the standard Icons.Default set
+private val FlashOn = Icons.Default.Bolt // Using Bolt as a replacement for FlashOn
+
 /**
  * Widget that displays a summary of expenses
  * This function is used elsewhere in the codebase
@@ -111,7 +114,8 @@ fun RecentTransactionsWidget(
     onRemove: () -> Unit = {},
     onConfigure: () -> Unit = {}
 ) {
-    val context = LocalContext.current
+    // Context is not directly used in this function but keeping it for consistency
+    // with other widget functions and potential future use
     
     DashboardWidget(
         title = "Recent Transactions",
@@ -180,6 +184,52 @@ fun RecentTransactionsWidget(
 }
 
 /**
+ * Widget that displays quick action buttons
+ */
+@Composable
+fun QuickActionsWidget(
+    onAddExpense: () -> Unit,
+    onExportPdf: () -> Unit,
+    onExportCsv: () -> Unit,
+    onScanReceipt: () -> Unit,
+    modifier: Modifier = Modifier,
+    isEditing: Boolean = false,
+    onRemove: () -> Unit = {},
+    onConfigure: () -> Unit = {}
+) {
+    DashboardWidget(
+        title = "Quick Actions",
+        icon = FlashOn,
+        modifier = modifier,
+        isEditing = isEditing,
+        onRemove = onRemove,
+        onConfigure = onConfigure
+    ) {
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp)
+        ) {
+            items(quickActions) { action ->
+                QuickActionButton(
+                    icon = action.icon,
+                    label = action.label,
+                    onClick = when (action.id) {
+                        "add" -> onAddExpense
+                        "pdf" -> onExportPdf
+                        "csv" -> onExportCsv
+                        "scan" -> onScanReceipt
+                        else -> {{}}
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
  * A single transaction item in the recent transactions widget
  */
 @Composable
@@ -228,7 +278,7 @@ private fun TransactionItem(
             ) {
                 // Description or placeholder
                 Text(
-                    text = if (expense.description.isNotBlank()) expense.description else "Expense",
+                    text = expense.description.ifBlank { "Expense" },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
