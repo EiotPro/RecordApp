@@ -1,25 +1,28 @@
 package com.example.recordapp.ui.components
 
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.recordapp.R
@@ -35,6 +38,14 @@ fun RecentExpenseCard(
 ) {
     val context = LocalContext.current
     val settingsManager = SettingsManager.getInstance(context)
+    
+    // Receipt type icon and color
+    val (receiptIcon, receiptColor) = when (expense.receiptType) {
+        "PHYSICAL_RECEIPT" -> Icons.Default.Receipt to MaterialTheme.colorScheme.tertiary
+        "DIGITAL_PAYMENT" -> Icons.Default.CreditCard to MaterialTheme.colorScheme.primary
+        "UPI_PAYMENT" -> Icons.Default.QrCode to MaterialTheme.colorScheme.secondary
+        else -> Icons.AutoMirrored.Filled.ReceiptLong to MaterialTheme.colorScheme.primary
+    }
     
     Card(
         modifier = modifier
@@ -71,7 +82,7 @@ fun RecentExpenseCard(
                 ) {
                     Text("View All")
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                         contentDescription = "View all expenses",
                         modifier = Modifier.size(16.dp)
                     )
@@ -135,7 +146,7 @@ fun RecentExpenseCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Description,
+                        imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                         contentDescription = "No image",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(48.dp)
@@ -155,7 +166,7 @@ fun RecentExpenseCard(
                     modifier = Modifier.padding(bottom = 8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DateRange,
+                        imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                         contentDescription = "Timestamp",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)
@@ -174,7 +185,7 @@ fun RecentExpenseCard(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Folder,
+                            imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                             contentDescription = "Folder",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
@@ -188,21 +199,21 @@ fun RecentExpenseCard(
                     }
                 }
                 
-                // Serial Number if available
-                if (expense.serialNumber.isNotEmpty()) {
+                // Receipt type if available
+                if (expense.hasReceiptType()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = "Serial Number",
-                            tint = MaterialTheme.colorScheme.primary,
+                            imageVector = receiptIcon,
+                            contentDescription = "Receipt Type",
+                            tint = receiptColor,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "SN: ${expense.serialNumber}",
+                            text = expense.getReceiptTypeDisplayName(),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }

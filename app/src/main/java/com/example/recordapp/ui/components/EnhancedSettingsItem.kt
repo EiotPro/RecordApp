@@ -41,7 +41,9 @@ fun EnhancedSettingsItem(
     isDestructive: Boolean = false,
     isSwitch: Boolean = false,
     isSwitchEnabled: Boolean = false,
-    onSwitchChange: ((Boolean) -> Unit)? = null
+    onSwitchChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     val contentColor = if (isDestructive) {
         MaterialTheme.colorScheme.error
@@ -50,10 +52,13 @@ fun EnhancedSettingsItem(
     }
     
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clickable(onClick = onClick)
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            )
             .animateContentSize(
                 animationSpec = tween(
                     durationMillis = 300,
@@ -62,7 +67,8 @@ fun EnhancedSettingsItem(
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface,
+            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp

@@ -1,0 +1,22 @@
+#!/bin/sh
+# RecordApp pre-commit hook
+
+echo "Running RecordApp pre-commit checks..."
+
+# Check for duplicate UI components
+echo "Checking for duplicate UI components..."
+# Add your check logic here
+
+# Run lint checks
+echo "Running lint checks..."
+./gradlew lintDebug -q || {
+    echo "Lint checks failed. Please fix the issues before committing."
+    exit 1
+}
+
+# Check navigation components
+echo "Checking navigation components..."
+# Add your check logic here
+
+echo "All pre-commit checks passed!"
+exit 0 

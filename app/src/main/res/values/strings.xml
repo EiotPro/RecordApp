@@ -10,6 +10,7 @@
     <string name="confirm">Confirm</string>
     <string name="undo">Undo</string>
     <string name="open_settings">Open Settings</string>
+    <string name="startup_errors_detected">Some app components could not be initialized. This may be due to restoration from backup.</string>
     
     <!-- Navigation Strings -->
     <string name="dashboard">Dashboard</string>
@@ -24,6 +25,7 @@
     <string name="no_image">No image available</string>
     <string name="no_image_indicator">No image</string>
     <string name="has_image">Has image</string>
+    <string name="image_management">Image Management</string>
     
     <!-- Expense Management -->
     <string name="expense_list">Expenses</string>
@@ -43,12 +45,21 @@
     <string name="export_pdf">Export PDF</string>
     <string name="export_csv">Export CSV</string>
     <string name="export_images">Export Images</string>
-    <string name="export_folder_pdf">Export Folder as PDF</string>
-    <string name="export_folder_csv">Export Folder as CSV</string>
-    <string name="export_folder_grid">Export Images as Grid PDF</string>
+    <string name="export_folder_pdf">Export PDF</string>
+    <string name="export_folder_grid_pdf">Export Grid PDF</string>
+    <string name="export_folder_csv">Export CSV</string>
+    <string name="export_folder_grid">Export All Grid</string>
+    <string name="export_folder_list">Export List PDF</string>
+    <string name="export_zip">ZIP Export</string>
     <string name="generate_pdf">Download All</string>
     <string name="share_pdf">Share PDF</string>
     <string name="view_pdf">View PDF</string>
+    
+    <!-- ZIP Export Strings -->
+    <string name="export_zip_starting">Starting ZIP export for %1$s…</string>
+    <string name="export_zip_success">ZIP exported successfully to %1$s</string>
+    <string name="export_zip_failed">ZIP export failed: %1$s</string>
+    <string name="share_zip">Share ZIP File</string>
     
     <!-- Folder Management -->
     <string name="folder_name">Folder Name</string>
@@ -198,6 +209,7 @@
     <!-- Authentication Strings -->
     <string name="login">Login</string>
     <string name="signup">Sign Up</string>
+    <string name="admin">Admin Panel</string>
     <string name="email">Email</string>
     <string name="password">Password</string>
     <string name="confirm_password">Confirm Password</string>
@@ -206,4 +218,5 @@
     <string name="login_title">Login to your account</string>
     <string name="signup_title">Create a new account</string>
     <string name="logout">Logout</string>
+    <string name="admin_panel">Admin Panel</string>
 </resources>

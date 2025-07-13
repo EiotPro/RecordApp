@@ -21,7 +21,9 @@ data class ExpenseEntity(
     val serialNumber: String = "",
     val amount: Double = 0.0,
     val description: String = "",
-    val folderName: String = "default"
+    val folderName: String = "default",
+    val receiptType: String = "",
+    val displayOrder: Int = 0
 ) {
     /**
      * Convert to domain model
@@ -34,7 +36,9 @@ data class ExpenseEntity(
             serialNumber = serialNumber,
             amount = amount,
             description = description,
-            folderName = folderName
+            folderName = folderName,
+            receiptType = receiptType,
+            displayOrder = displayOrder
         )
     }
 
@@ -52,7 +56,9 @@ data class ExpenseEntity(
                 serialNumber = expense.serialNumber,
                 amount = expense.amount,
                 description = expense.description,
-                folderName = expense.folderName
+                folderName = expense.folderName,
+                receiptType = expense.receiptType,
+                displayOrder = expense.displayOrder
             )
         }
     }

@@ -25,6 +25,7 @@ import com.example.recordapp.R
 import com.example.recordapp.model.Expense
 import com.example.recordapp.util.animateDeletion
 import com.example.recordapp.util.fadeInOut
+import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
@@ -35,7 +36,8 @@ fun PagedExpenseList(
     onDeleteExpense: (String) -> Unit,
     onUndoDelete: (Expense) -> Unit,
     onMoveExpense: (String, String) -> Unit = { _, _ -> },
-    onExpenseClick: (String) -> Unit = {}
+    onExpenseClick: (String) -> Unit = {},
+    viewModel: ExpenseViewModel? = null
 ) {
     val lazyExpenseItems: LazyPagingItems<Expense> = expenses.collectAsLazyPagingItems()
     val scope = rememberCoroutineScope()
@@ -95,7 +97,8 @@ fun PagedExpenseList(
                                     expenseToDelete.value = it.id 
                                 },
                                 onMove = { onMoveExpense(it.id, it.folderName) },
-                                onClick = { onExpenseClick(it.id) }
+                                onClick = { onExpenseClick(it.id) },
+                                viewModel = viewModel
                             )
                         }
                     }

@@ -59,7 +59,8 @@ class ExpenseRepository private constructor(private val context: Context) {
         serialNumber: String = "",
         amount: Double = 0.0,
         description: String = "",
-        folderName: String = "default"
+        folderName: String = "default",
+        receiptType: String = ""
     ): Expense {
         return withContext(Dispatchers.IO) {
             val expense = Expense(
@@ -69,7 +70,8 @@ class ExpenseRepository private constructor(private val context: Context) {
                 serialNumber = serialNumber,
                 amount = amount,
                 description = description,
-                folderName = folderName
+                folderName = folderName,
+                receiptType = receiptType
             )
             val entity = ExpenseEntity.fromExpense(expense)
             expenseDao.insert(entity)

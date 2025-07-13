@@ -1,5 +1,6 @@
 package com.example.recordapp.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,6 +39,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.recordapp.R
 import com.example.recordapp.ui.navigation.Screen
 import com.example.recordapp.viewmodel.AuthViewModel
 
@@ -93,6 +97,14 @@ fun SignupScreen(
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo2),
+                        contentDescription = "App Logo",
+                        modifier = Modifier.height(80.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
                     Text(
                         text = "RecordApp",
                         fontSize = 24.sp,
@@ -170,10 +182,14 @@ fun SignupScreen(
                         CircularProgressIndicator()
                     } else {
                         Button(
-                            onClick = { viewModel.register(email, password, confirmPassword, name) },
-                            modifier = Modifier.fillMaxWidth()
+                            onClick = {
+                                viewModel.registerUser(email.trim(), password, confirmPassword, name)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
                         ) {
-                            Text("Sign Up")
+                            Text(stringResource(R.string.create_account))
                         }
                     }
                     

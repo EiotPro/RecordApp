@@ -57,13 +57,6 @@ fun ExpenseSummaryWidget(
 ) {
     val context = LocalContext.current
     val settingsManager = SettingsManager.getInstance(context)
-    val currencyFormatter = remember {
-        NumberFormat.getCurrencyInstance().apply {
-            currency = Currency.getInstance(Locale.getDefault())
-            minimumFractionDigits = 2
-            maximumFractionDigits = 2
-        }
-    }
     
     DashboardWidget(
         title = "Expense Summary",
@@ -86,7 +79,7 @@ fun ExpenseSummaryWidget(
             )
             
             Text(
-                text = currencyFormatter.format(totalAmount),
+                text = settingsManager.formatAmount(totalAmount),
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
@@ -160,10 +153,16 @@ fun RecentTransactionsWidget(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    recentExpenses.take(3).forEach { expense ->
+                    recentExpenses.forEach { expense ->
                         TransactionItem(
                             expense = expense,
-                            onClick = { onExpenseClick(expense.id) }
+                            onClick = { 
+                                try {
+                                    onExpenseClick(expense.id)
+                                } catch (e: Exception) {
+                                    // Handle click error silently
+                                }
+                            }
                         )
                     }
                 }
@@ -172,7 +171,13 @@ fun RecentTransactionsWidget(
                 
                 // View all button
                 TextButton(
-                    onClick = onViewAllClick,
+                    onClick = { 
+                        try {
+                            onViewAllClick()
+                        } catch (e: Exception) {
+                            // Handle click error silently
+                        }
+                    },
                     modifier = Modifier.align(Alignment.End)
                 ) {
                     Text("View All")
@@ -541,8 +546,215 @@ fun SettingsBottomSheet(
     
     LaunchedEffect(selectedFolder) {
         // Update the settings and the ViewModel when selected folder changes
-        settingsManager.defaultFolder = selectedFolder
-        viewModel.setCurrentFolder(selectedFolder)
+        try {
+            settingsManager.defaultFolder = selectedFolder
+            viewModel.setCurrentFolder(selectedFolder)
+        } catch (e: Exception) {
+            // Handle setting update error silently
+        }
+    }
+    
+    // Create folder dialog
+    if (showCreateFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            title = { Text("Create New Folder") },
+            text = {
+                Column {
+                    Text("Enter a name for the new folder:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newFolderName,
+                        onValueChange = { newFolderName = it },
+                        label = { Text("Folder Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newFolderName.isNotBlank()) {
+                            scope.launch {
+                                viewModel.createFolder(newFolderName)
+                                newFolderName = ""
+                                showCreateFolderDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showCreateFolderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Rename folder dialog
+    if (showRenameFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameFolderDialog = false },
+            title = { Text("Rename Folder") },
+            text = {
+                Column {
+                    Text("Enter a new name for '$folderToRename':")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newFolderName,
+                        onValueChange = { newFolderName = it },
+                        label = { Text("New Folder Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newFolderName.isNotBlank() && newFolderName != folderToRename) {
+                            scope.launch {
+                                viewModel.renameFolder(folderToRename, newFolderName)
+                                newFolderName = ""
+                                folderToRename = ""
+                                showRenameFolderDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Rename")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showRenameFolderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Delete folder dialog
+    if (showDeleteFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteFolderDialog = false },
+            title = { Text("Delete Folder") },
+            text = {
+                Column {
+                    Text("What would you like to do with the contents of '$folderToDelete'?")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Option 1: Delete contents
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { shouldDeleteContents = true }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        RadioButton(
+                            selected = shouldDeleteContents,
+                            onClick = { shouldDeleteContents = true }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Delete all contents",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "All expenses in this folder will be permanently deleted",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Option 2: Move contents to another folder
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { shouldDeleteContents = false }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        RadioButton(
+                            selected = !shouldDeleteContents,
+                            onClick = { shouldDeleteContents = false }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Move contents to another folder",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            // Only show dropdown if "Move to" is selected
+                            if (!shouldDeleteContents) {
+                                val moveToOptions = allFolders.filter { it != folderToDelete }
+                                ExposedDropdownMenuBox(
+                                    expanded = false,
+                                    onExpandedChange = { },
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Select destination folder:",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        
+                                        // Simple chip selection instead of dropdown
+                                        LazyRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            items(moveToOptions) { folder ->
+                                                FilterChip(
+                                                    selected = folder == targetMoveFolder,
+                                                    onClick = { targetMoveFolder = folder },
+                                                    label = { Text(folder) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            if (shouldDeleteContents) {
+                                viewModel.deleteFolder(folderToDelete, null)
+                            } else {
+                                viewModel.deleteFolder(folderToDelete, targetMoveFolder)
+                            }
+                            folderToDelete = ""
+                            targetMoveFolder = "default"
+                            shouldDeleteContents = false
+                            showDeleteFolderDialog = false
+                        }
+                    }
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteFolderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
     
     ModalBottomSheet(
@@ -563,120 +775,40 @@ fun SettingsBottomSheet(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Folder Management Section
-            Text(
-                text = "Folder Management",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Organize your expenses into folders",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Create new folder button
-            Button(
-                onClick = { 
-                    newFolderName = ""
-                    showCreateFolderDialog = true 
-                },
-                modifier = Modifier.fillMaxWidth()
+            // Default folder section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Default.CreateNewFolder,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = "Default Folder",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Create New Folder")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Current folder display
-            Text(
-                text = "Current folder: $currentFolder",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            
-            // Available folders with action buttons
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 250.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(
-                    items = allFolders,
-                    key = { it }
-                ) { folder ->
-                    FolderManagementItem(
-                        folderName = folder,
-                        isSelected = folder == selectedFolder,
-                        onSelect = { 
-                            selectedFolder = folder
-                            viewModel.setCurrentFolder(folder)
-                        },
-                        onRename = {
-                            if (folder != "default") {
-                                folderToRename = folder
-                                newFolderName = folder
-                                showRenameFolderDialog = true
-                            }
-                        },
-                        onDelete = {
-                            if (folder != "default") {
-                                folderToDelete = folder
-                                shouldDeleteContents = false
-                                showDeleteFolderDialog = true
-                            }
-                        },
-                        isDefault = folder == "default",
-                        expenseCount = availableFolders.find { it.first == folder }?.second ?: 0
+                
+                TextButton(
+                    onClick = { 
+                        newFolderName = ""
+                        showCreateFolderDialog = true 
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CreateNewFolder,
+                        contentDescription = "Create Folder",
+                        modifier = Modifier.size(18.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Create New")
                 }
             }
             
-            if (uiState.errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uiState.errorMessage ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Default Folder Setting Section
-            Text(
-                text = "Default Folder",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Select the default folder for new expenses",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Folder chips
+            // Default folder chips
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(allFolders) { folder ->
@@ -684,302 +816,138 @@ fun SettingsBottomSheet(
                         selected = folder == selectedFolder,
                         onClick = { selectedFolder = folder },
                         label = { Text(folder) },
-                        leadingIcon = {
-                            if (folder == selectedFolder) {
+                        leadingIcon = if (folder == selectedFolder) {
+                            {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-                        }
+                        } else null
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            // Theme Setting
+            HorizontalDivider()
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Folder Management Section
             Text(
-                text = "Appearance",
+                text = "Folder Management",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Medium
             )
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // Theme options
-            val themes = listOf("Light", "Dark", "System")
-            var selectedTheme by remember { mutableStateOf(
-                when (settingsManager.appTheme) {
-                    "light" -> "Light"
-                    "dark" -> "Dark"
-                    else -> "System"
-                }
-            ) }
-            
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(themes) { theme ->
-                    FilterChip(
-                        selected = theme == selectedTheme,
-                        onClick = { 
-                            selectedTheme = theme
-                            settingsManager.appTheme = theme.lowercase()
-                        },
-                        label = { Text(theme) },
-                        leadingIcon = {
-                            when (theme) {
-                                "Light" -> Icon(
-                                    imageVector = Icons.Default.LightMode,
-                                    contentDescription = "Light theme",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                "Dark" -> Icon(
-                                    imageVector = Icons.Default.DarkMode,
-                                    contentDescription = "Dark theme",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                else -> Icon(
-                                    imageVector = Icons.Default.AutoMode,
-                                    contentDescription = "System theme",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+            // Folder list with management options
+            availableFolders.forEach { (folder, count) ->
+                FolderManagementItem(
+                    folderName = folder,
+                    isSelected = folder == currentFolder,
+                    onSelect = { 
+                        selectedFolder = folder 
+                        viewModel.setCurrentFolder(folder)
+                    },
+                    onRename = {
+                        folderToRename = folder
+                        newFolderName = folder
+                        showRenameFolderDialog = true
+                    },
+                    onDelete = {
+                        folderToDelete = folder
+                        targetMoveFolder = if (allFolders.contains("default") && folder != "default") {
+                            "default"
+                        } else {
+                            allFolders.firstOrNull { it != folder } ?: ""
                         }
-                    )
-                }
+                        showDeleteFolderDialog = true
+                    },
+                    isDefault = folder == "default",
+                    expenseCount = count
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            // Image Compression Setting
+            Spacer(modifier = Modifier.height(16.dp))
             
-            // Accent Color Setting
-            Text(
-                text = "Accent Color",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            HorizontalDivider()
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            // Accent color options
-            val accentColors = listOf("Blue", "Green", "Purple", "Red", "Orange")
-            var selectedColor by remember { mutableStateOf(
-                accentColors.find { it.lowercase() == settingsManager.accentColor } ?: "Blue"
-            ) }
+            // Image Compression Section
+            var imageCompression by remember { mutableStateOf(settingsManager.imageCompression.toFloat()) }
             
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(accentColors) { color ->
-                    FilterChip(
-                        selected = color == selectedColor,
-                        onClick = { 
-                            selectedColor = color
-                            settingsManager.accentColor = color.lowercase()
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Image Compression",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Text(
+                    text = "Adjust image quality when saving (higher = better quality but larger files)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Low",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Slider(
+                        value = imageCompression,
+                        onValueChange = { 
+                            imageCompression = it
+                            settingsManager.imageCompression = it.toInt()
                         },
-                        label = { Text(color) }
+                        valueRange = 20f..100f,
+                        steps = 8,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    Text(
+                        text = "High",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                
+                Text(
+                    text = "${imageCompression.toInt()}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Close button
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End)
+            // Buttons at the bottom
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp),
+                horizontalArrangement = Arrangement.End
             ) {
-                Text("Close")
+                TextButton(onClick = onDismiss) {
+                    Text("Close")
+                }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
         }
-    }
-    
-    // Create Folder Dialog
-    if (showCreateFolderDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreateFolderDialog = false },
-            title = { Text("Create New Folder") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = newFolderName,
-                        onValueChange = { newFolderName = it },
-                        label = { Text("Folder Name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            viewModel.createFolder(newFolderName)
-                            showCreateFolderDialog = false
-                        }
-                    },
-                    enabled = newFolderName.isNotBlank()
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreateFolderDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-    
-    // Rename Folder Dialog
-    if (showRenameFolderDialog) {
-        AlertDialog(
-            onDismissRequest = { showRenameFolderDialog = false },
-            title = { Text("Rename Folder") },
-            text = {
-                Column {
-                    Text(
-                        "Current name: $folderToRename",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = newFolderName,
-                        onValueChange = { newFolderName = it },
-                        label = { Text("New Folder Name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            viewModel.renameFolder(folderToRename, newFolderName)
-                            showRenameFolderDialog = false
-                        }
-                    },
-                    enabled = newFolderName.isNotBlank() && newFolderName != folderToRename
-                ) {
-                    Text("Rename")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRenameFolderDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-    
-    // Delete Folder Dialog
-    if (showDeleteFolderDialog) {
-        val availableTargetFolders = allFolders.filter { it != folderToDelete && it != "default" }
-        
-        AlertDialog(
-            onDismissRequest = { showDeleteFolderDialog = false },
-            title = { Text("Delete Folder") },
-            text = {
-                Column {
-                    Text(
-                        "Are you sure you want to delete the folder '$folderToDelete'?",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = shouldDeleteContents,
-                            onCheckedChange = { shouldDeleteContents = it }
-                        )
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        Text(
-                            text = if (shouldDeleteContents) 
-                                "Delete all contents" 
-                            else 
-                                "Move contents to another folder",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    
-                    if (!shouldDeleteContents && availableTargetFolders.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // Target folder selection
-                        Text(
-                            "Select target folder:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(availableTargetFolders) { folder ->
-                                FilterChip(
-                                    selected = folder == targetMoveFolder,
-                                    onClick = { targetMoveFolder = folder },
-                                    label = { Text(folder) }
-                                )
-                            }
-                        }
-                    }
-                    
-                    if (availableTargetFolders.isEmpty() && !shouldDeleteContents) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Contents will be moved to the default folder",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            if (shouldDeleteContents) {
-                                viewModel.deleteFolder(folderToDelete)
-                            } else {
-                                viewModel.deleteFolder(
-                                    folderToDelete, 
-                                    moveContentsToFolder = if (availableTargetFolders.isEmpty()) "default" else targetMoveFolder
-                                )
-                            }
-                            showDeleteFolderDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteFolderDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 

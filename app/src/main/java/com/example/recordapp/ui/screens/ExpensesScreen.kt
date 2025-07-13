@@ -11,7 +11,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -19,12 +24,20 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -49,7 +63,7 @@ import com.example.recordapp.ui.components.MoveExpenseDialog
 import com.example.recordapp.ui.components.PagedExpenseList
 import com.example.recordapp.ui.components.SwipeableExpenseList
 import com.example.recordapp.ui.navigation.Screen
-import com.example.recordapp.util.GridSize
+import com.example.recordapp.model.GridSize
 import com.example.recordapp.util.PermissionUtils
 import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.viewmodel.ExpenseViewModel
@@ -79,6 +93,9 @@ fun ExpensesScreen(
     val PDF_EXPORT = 1
     val CSV_EXPORT = 2
     val GRID_EXPORT = 3
+    val FOLDER_GRID_EXPORT = 4
+    val LIST_EXPORT = 5
+    val ZIP_EXPORT = 6
     var pendingExportType by remember { mutableStateOf(0) }
     var pendingExportFolder by remember { mutableStateOf("") }
     
@@ -97,7 +114,14 @@ fun ExpensesScreen(
             // Show a notification that permission is granted
             Toast.makeText(
                 context,
-                "Starting ${if (pendingExportType == PDF_EXPORT) "PDF" else if (pendingExportType == CSV_EXPORT) "CSV" else "Grid PDF"} export...",
+                "Starting ${when (pendingExportType) {
+                    PDF_EXPORT -> "PDF"
+                    CSV_EXPORT -> "CSV"
+                    FOLDER_GRID_EXPORT -> "Folder Grid PDF"
+                    GRID_EXPORT -> "Grid PDF"
+                    ZIP_EXPORT -> "ZIP"
+                    else -> "Export"
+                }} export...",
                 Toast.LENGTH_SHORT
             ).show()
         } else {
@@ -112,7 +136,7 @@ fun ExpensesScreen(
     
     // Function to export PDF with permission handling
     fun exportPdf(folderName: String) {
-        if (PermissionUtils.hasStoragePermissions(context)) {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
             scope.launch {
                 // Show a toast that export is starting
                 Toast.makeText(
@@ -168,7 +192,7 @@ fun ExpensesScreen(
     
     // Function to export CSV with permission handling
     fun exportCsv(folderName: String) {
-        if (PermissionUtils.hasStoragePermissions(context)) {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
             scope.launch {
                 // Show a toast that export is starting
                 Toast.makeText(
@@ -222,9 +246,81 @@ fun ExpensesScreen(
         }
     }
     
+    // Function to export folder grid PDF with permission handling
+    fun exportFolderGridPdf(folderName: String) {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
+            scope.launch {
+                // Show a toast that export is starting
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_starting, "Folder Grid PDF"),
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // Get default grid size from settings
+                val defaultGridSize = try {
+                    GridSize.valueOf(settings.defaultGridSize)
+                } catch (e: Exception) {
+                    GridSize.ONE_BY_ONE
+                }
+                
+                // Generate the folder grid PDF using the default grid size from settings
+                viewModel.generateFolderGridPdf(folderName, defaultGridSize) { pdfFile ->
+                    pdfFile?.let { file ->
+                        try {
+                            // Export successful - display any success message from viewModel
+                            viewModel.uiState.value.successMessage?.let { successMsg ->
+                                Toast.makeText(
+                                    context,
+                                    successMsg,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.export_success, "Folder Grid PDF") + 
+                                " - " + file.absolutePath,
+                                Toast.LENGTH_LONG
+                            ).show()
+                            
+                            val intent = viewModel.getViewPdfIntent(file)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            // Failed to open the file
+                            Toast.makeText(
+                                context,
+                                "Folder Grid PDF created but couldn't open: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            Log.e("ExpensesScreen", "Failed to open Folder Grid PDF", e)
+                        }
+                    } ?: run {
+                        // Export failed
+                        val errorMsg = viewModel.uiState.value.errorMessage ?: "Unknown error"
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.export_failed, "Folder Grid PDF") + 
+                            " - $errorMsg",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } else {
+            // Save the operation for after permissions are granted
+            pendingExportType = FOLDER_GRID_EXPORT
+            pendingExportFolder = folderName
+            pendingExportOperation = { exportFolderGridPdf(folderName) }
+            
+            // Show permission dialog
+            showPermissionDialog = true
+        }
+    }
+    
     // Function to export grid-based PDF with permission handling
     fun exportGridPdf() {
-        if (PermissionUtils.hasStoragePermissions(context)) {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
             scope.launch {
                 // Show a toast that export is starting
                 Toast.makeText(
@@ -285,6 +381,122 @@ fun ExpensesScreen(
         }
     }
     
+    /**
+     * Export folder expenses as a list PDF
+     */
+    fun exportListPdf() {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
+            scope.launch {
+                // Show a toast that export is starting
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_starting, "List PDF"),
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // Get the selected folder, or default if none selected
+                val folderName = selectedFolder ?: return@launch
+                
+                // Generate the list PDF
+                viewModel.generateFolderListPdf(folderName) { pdfFile ->
+                    pdfFile?.let { file ->
+                        try {
+                            // Export successful
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.export_success, "List PDF") + 
+                                " - " + file.absolutePath,
+                                Toast.LENGTH_LONG
+                            ).show()
+                            
+                            val intent = viewModel.getViewPdfIntent(file)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            // Failed to open the file
+                            Toast.makeText(
+                                context,
+                                "List PDF created but couldn't open: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            Log.e("ExpensesScreen", "Failed to open List PDF", e)
+                        }
+                    } ?: run {
+                        // Export failed
+                        val errorMsg = viewModel.uiState.value.errorMessage ?: "Unknown error"
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.export_failed, "List PDF") + 
+                            " - $errorMsg",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } else {
+            // Save the operation for after permissions are granted
+            pendingExportType = LIST_EXPORT
+            pendingExportOperation = { exportListPdf() }
+            
+            // Show permission dialog
+            showPermissionDialog = true
+        }
+    }
+    
+    // Function to export ZIP with permission handling
+    fun exportZip(folderName: String) {
+        if (PermissionUtils.hasStoragePermissions(context) || PermissionUtils.wasPermissionPreviouslyGranted(context)) {
+            scope.launch {
+                // Show a toast that export is starting
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_zip_starting, 
+                        if (folderName == "All") "all expenses" else "folder: $folderName"),
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                viewModel.generateZipExport(folderName) { zipFile ->
+                    zipFile?.let { file ->
+                        try {
+                            // Export successful
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.export_zip_success, file.absolutePath),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            
+                            val intent = viewModel.getShareFileIntent(file)
+                            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_zip)))
+                        } catch (e: Exception) {
+                            // Failed to share the file
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.export_zip_failed, e.message),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            Log.e("ExpensesScreen", "Failed to share ZIP", e)
+                        }
+                    } ?: run {
+                        // Export failed
+                        val errorMsg = viewModel.uiState.value.errorMessage ?: "Unknown error"
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.export_zip_failed, errorMsg),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } else {
+            // Save the operation for after permissions are granted
+            pendingExportType = ZIP_EXPORT
+            pendingExportFolder = folderName
+            pendingExportOperation = { exportZip(folderName) }
+            
+            // Show permission dialog
+            showPermissionDialog = true
+        }
+    }
+    
     // Folder stats for the currently selected folder
     var folderStats by remember { mutableStateOf(Pair(0, 0.0)) }
     
@@ -304,31 +516,112 @@ fun ExpensesScreen(
     
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    // Create a local non-delegated property for the title
-                    val titleText = if (selectedFolder == null) {
-                        stringResource(R.string.expense_list)
-                    } else {
-                        "Folder: $selectedFolder"
+            // Use custom top bar with minimal height
+            Box(modifier = Modifier.height(0.dp))
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Custom top app bar integrated into content
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                // Create a local non-delegated property for the title
+                val titleText = if (selectedFolder == null) {
+                    stringResource(R.string.expense_list)
+                } else {
+                    "Folder: $selectedFolder"
+                }
+                
+                Text(
+                    text = titleText,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+                
+                // More options icon
+                if (expenses.isNotEmpty()) {
+                    IconButton(
+                        onClick = { showDropdownMenu = true },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.MoreVert,
+                            contentDescription = "More options"
+                        )
                     }
-                    Text(text = titleText)
-                },
-                actions = {
-                    // Only show dropdown menu when there are expenses
-                    if (expenses.isNotEmpty()) {
-                        IconButton(onClick = { showDropdownMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.MoreVert,
-                                contentDescription = "More options"
+                    
+                    DropdownMenu(
+                        expanded = showDropdownMenu,
+                        onDismissRequest = { showDropdownMenu = false }
+                    ) {
+                        // Export options shown for both All tab and specific folders
+                        if (selectedFolder == null) {
+                            // All tab export options
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_folder_pdf)) },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    exportPdf("All")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PictureAsPdf,
+                                        contentDescription = null
+                                    )
+                                }
                             )
-                        }
-                        
-                        DropdownMenu(
-                            expanded = showDropdownMenu,
-                            onDismissRequest = { showDropdownMenu = false }
-                        ) {
-                            // Export options only shown when a folder is selected
+                            
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_folder_csv)) },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    exportCsv("All")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.TableChart,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            
+                            // Add Export All Grid to the ALL tab
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_folder_grid)) },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    exportGridPdf()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Image,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            
+                            // Add ZIP Export option
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_zip)) },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    exportZip("All")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Archive,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                        } else {
+                            // Specific folder export options
                             selectedFolder?.let { folderName ->
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.export_folder_pdf)) },
@@ -357,18 +650,35 @@ fun ExpensesScreen(
                                         )
                                     }
                                 )
+                                
+                                // Add ZIP Export option for specific folder
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_zip)) },
+                                    onClick = {
+                                        showDropdownMenu = false
+                                        exportZip(folderName)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Archive,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
                             }
-                            
-                            // Grid export option is always shown regardless of folder selection
+                        }
+                        
+                        // Only show list export option when a folder is selected
+                        if (selectedFolder != null) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.export_folder_grid)) },
+                                text = { Text(stringResource(R.string.export_folder_list)) },
                                 onClick = {
                                     showDropdownMenu = false
-                                    exportGridPdf()
+                                    exportListPdf()
                                 },
                                 leadingIcon = {
                                     Icon(
-                                        imageVector = Icons.Outlined.Image,
+                                        imageVector = Icons.AutoMirrored.Filled.ViewList,
                                         contentDescription = null
                                     )
                                 }
@@ -376,14 +686,8 @@ fun ExpensesScreen(
                         }
                     }
                 }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+            }
+            
             // Folder tabs
             FolderTabs(
                 folders = availableFolders,
@@ -396,6 +700,7 @@ fun ExpensesScreen(
             // Show folder stats if a folder is selected
             if (selectedFolder != null) {
                 selectedFolder?.let { folderName ->
+                    Column {
                     FolderStatsCard(
                         folderName = folderName,
                         expenseCount = folderStats.first,
@@ -403,6 +708,56 @@ fun ExpensesScreen(
                         formattedAmount = settings.formatAmount(folderStats.second),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                        
+                        // Add button to manage images in this folder
+                        Button(
+                            onClick = {
+                                navController.navigate(Screen.ImageManagement.createRoute(folderName))
+                            },
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Manage Images")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+            
+            // Shows loading and processing state
+            if (viewModel.uiState.value.isLoading) {
+                viewModel.uiState.value.processingMessage?.let { message ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.width(200.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
             }
             
@@ -421,7 +776,8 @@ fun ExpensesScreen(
                     },
                     onExpenseClick = { expenseId ->
                         navController.navigate(Screen.ExpenseDetail.createRoute(expenseId))
-                    }
+                    },
+                    viewModel = viewModel
                 )
             }
         }

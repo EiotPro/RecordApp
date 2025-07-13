@@ -1,5 +1,6 @@
 package com.example.recordapp.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -27,13 +28,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.recordapp.R
 import com.example.recordapp.ui.navigation.Screen
 import com.example.recordapp.viewmodel.AuthViewModel
 
@@ -87,6 +92,14 @@ fun LoginScreen(
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo2),
+                        contentDescription = "App Logo",
+                        modifier = Modifier.height(80.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
                     Text(
                         text = "RecordApp",
                         fontSize = 24.sp,
@@ -97,7 +110,7 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        text = "Login to your account",
+                        text = stringResource(R.string.login_title),
                         fontSize = 16.sp
                     )
                     
@@ -106,7 +119,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
-                        label = { Text("Email") },
+                        label = { Text(stringResource(R.string.email)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -120,7 +133,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.password)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -136,10 +149,10 @@ fun LoginScreen(
                         CircularProgressIndicator()
                     } else {
                         Button(
-                            onClick = { viewModel.login(email, password) },
+                            onClick = { viewModel.login(email.trim(), password) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Login")
+                            Text(stringResource(R.string.login))
                         }
                     }
                     
@@ -148,7 +161,7 @@ fun LoginScreen(
                     TextButton(
                         onClick = { navController.navigate(Screen.Signup.route) }
                     ) {
-                        Text("Don't have an account? Sign Up")
+                        Text(text = "Don't have an account? Sign Up")
                     }
                 }
             }

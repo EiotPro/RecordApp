@@ -3,43 +3,63 @@ package com.example.recordapp
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
-import com.example.recordapp.ui.components.AnimatedWelcomeText
 import com.example.recordapp.ui.components.AppBottomNavigation
+import com.example.recordapp.ui.components.ConnectionQualityIndicator
+import com.example.recordapp.ui.components.SupabaseLogo
 import com.example.recordapp.ui.navigation.AppNavigation
-import com.example.recordapp.ui.navigation.Screen
 import com.example.recordapp.ui.navigation.getStartDestination
 import com.example.recordapp.ui.theme.AppTheme
 import com.example.recordapp.viewmodel.AuthViewModel
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import com.example.recordapp.util.PermissionUtils
+import com.example.recordapp.network.InternetConnectionChecker
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     private val expenseViewModel: ExpenseViewModel by viewModels()
+    private val TAG = "MainActivity"
     
-    // Add permission request constants
-    companion object {
-        private const val PERMISSION_REQUEST_CODE = 100
+    // Modern permission request launcher
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.all { it.value }
+        if (!allGranted) {
+            // Show a toast message about missing permissions
+            Toast.makeText(
+                this,
+                getString(R.string.storage_permission_required),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,6 +69,9 @@ class MainActivity : ComponentActivity() {
         checkAndRequestPermissions()
         
         enableEdgeToEdge()
+        
+        // Check if there were any startup errors
+        checkStartupErrors()
         
         setContent {
             AppTheme {
@@ -62,6 +85,27 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    private fun checkStartupErrors() {
+        if (RecordApplication.hasStartupErrors()) {
+            val errors = RecordApplication.getStartupErrors()
+            
+            // Log all startup errors
+            errors.forEach { (source, error) ->
+                Log.e(TAG, "Startup error from $source:", error)
+            }
+            
+            // Show a toast to inform the user about potential issues
+            Toast.makeText(
+                this,
+                getString(R.string.startup_errors_detected),
+                Toast.LENGTH_LONG
+            ).show()
+            
+            // Clear errors after handling them
+            RecordApplication.clearStartupErrors()
+        }
+    }
+    
     private fun checkAndRequestPermissions() {
         val permissions = PermissionUtils.getRequiredPermissions()
         val missingPermissions = permissions.filter {
@@ -69,29 +113,7 @@ class MainActivity : ComponentActivity() {
         }.toTypedArray()
         
         if (missingPermissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, missingPermissions, PERMISSION_REQUEST_CODE)
-        }
-    }
-    
-    @Deprecated("Deprecated in Java")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-            
-            if (!allGranted) {
-                // Show a toast message about missing permissions
-                Toast.makeText(
-                    this,
-                    getString(R.string.storage_permission_required),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            requestPermissionLauncher.launch(missingPermissions)
         }
     }
 }
@@ -99,7 +121,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainContent(expenseViewModel: ExpenseViewModel) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    
+    // Get the AuthViewModel using the Compose viewModel() function
     val authViewModel: AuthViewModel = viewModel()
+    
+    // Get the InternetConnectionChecker using the context
+    val connectionChecker = remember { InternetConnectionChecker(context) }
+    
+    // Log any errors that occur during initialization
+    val errorState = remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(Unit) {
+        try {
+            // Any initialization that needs to happen
+        } catch (e: Exception) {
+            errorState.value = e.message
+            Log.e("MainContent", "Error during auth initialization", e)
+        }
+    }
     
     // Determine start destination based on auth state
     val startDestination = getStartDestination(authViewModel)
@@ -109,6 +149,27 @@ fun MainContent(expenseViewModel: ExpenseViewModel) {
     val isAuthenticated = uiState.isLoggedIn
     
     Scaffold(
+        topBar = {
+            // Only show top bar with Supabase logo when user is authenticated
+            if (isAuthenticated) {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(text = "RecordApp")
+                    },
+                    actions = {
+                        ConnectionQualityIndicator(
+                            connectionChecker = connectionChecker,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        SupabaseLogo(
+                            connectionChecker = connectionChecker,
+                            modifier = Modifier.padding(end = 16.dp),
+                            size = 24
+                        )
+                    }
+                )
+            }
+        },
         bottomBar = {
             // Only show bottom navigation when user is authenticated
             if (isAuthenticated) {

@@ -1,42 +1,37 @@
 package com.example.recordapp.repository
 
 import android.content.Context
-import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.recordapp.model.User
+import com.example.recordapp.network.SupabaseClient
+import dagger.hilt.android.qualifiers.ApplicationContext
+import io.github.jan.supabase.gotrue.user.UserInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Repository for user authentication
  */
-class AuthRepository private constructor(context: Context) {
+@Singleton
+class AuthRepository @Inject constructor(
+    @ApplicationContext private val applicationContext: Context,
+    private val supabaseClient: SupabaseClient
+) {
     
-    private val sharedPreferences: SharedPreferences
+    private val TAG = "AuthRepository"
     
     // Current user state
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
     
     init {
-        // Use EncryptedSharedPreferences for security
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        
-        sharedPreferences = EncryptedSharedPreferences.create(
-            context,
-            "auth_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-        
         // Check if user is logged in
         checkLoggedInUser()
     }
@@ -45,12 +40,21 @@ class AuthRepository private constructor(context: Context) {
      * Check if a user is currently logged in
      */
     private fun checkLoggedInUser() {
-        val userId = sharedPreferences.getString(KEY_USER_ID, null) ?: return
-        val email = sharedPreferences.getString(KEY_EMAIL, null) ?: return
-        val name = sharedPreferences.getString(KEY_NAME, "") ?: ""
-        
-        // For security, we don't store the actual password in memory
-        _currentUser.value = User(id = userId, email = email, password = "", name = name)
+        try {
+            val supabaseUser = supabaseClient.getCurrentUser()
+            supabaseUser?.let { userInfo ->
+                // Convert Supabase UserInfo to our User model
+            _currentUser.value = User(
+                    id = userInfo.id,
+                    email = userInfo.email ?: "",
+                    password = "", // For security, we don't store the actual password in memory
+                    name = userInfo.userMetadata?.get("name")?.toString() ?: "",
+                    lastLoginTime = userInfo.lastSignInAt?.toEpochMilliseconds() ?: 0L
+            )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking logged in user", e)
+        }
     }
     
     /**
@@ -58,27 +62,39 @@ class AuthRepository private constructor(context: Context) {
      */
     suspend fun registerUser(email: String, password: String, name: String): Result<User> = withContext(Dispatchers.IO) {
         try {
-            // Check if email is already registered
-            val existingEmail = sharedPreferences.getString("email_$email", null)
-            if (existingEmail != null) {
-                return@withContext Result.failure(Exception("Email already registered"))
-            }
+            // Create user data map for Supabase
+            val userData = mapOf(
+                "name" to name,
+                "created_at" to System.currentTimeMillis()
+            )
             
-            // Create new user
-            val userId = UUID.randomUUID().toString()
-            val user = User(id = userId, email = email, password = password, name = name)
+            // Register user with Supabase
+            val result = supabaseClient.signUp(email, password, userData)
             
-            // Store user data (except for memory representation)
-            val editor = sharedPreferences.edit()
-            editor.putString("email_$email", userId)
-            editor.putString("user_$userId", email)
-            editor.putString("password_$userId", password)
-            editor.putString("name_$userId", name)
-            editor.apply()
+            result.fold(
+                onSuccess = { userInfo ->
+                    // Convert Supabase UserInfo to our User model
+            val user = User(
+                        id = userInfo.id,
+                        email = userInfo.email ?: email,
+                        password = "", // For security, we don't store the actual password in memory
+                name = name, 
+                        creationTime = System.currentTimeMillis()
+            )
             
-            return@withContext Result.success(user)
+                    // Update current user
+                    _currentUser.value = user
+                    
+                    Result.success(user)
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Error registering user with Supabase", error)
+                    Result.failure(error)
+                }
+            )
         } catch (e: Exception) {
-            return@withContext Result.failure(e)
+            Log.e(TAG, "Error registering user", e)
+            Result.failure(e)
         }
     }
     
@@ -87,35 +103,37 @@ class AuthRepository private constructor(context: Context) {
      */
     suspend fun login(email: String, password: String): Result<User> = withContext(Dispatchers.IO) {
         try {
-            // Check if email exists
-            val userId = sharedPreferences.getString("email_$email", null)
-                ?: return@withContext Result.failure(Exception("Email not registered"))
+            // Login with Supabase
+            val result = supabaseClient.signIn(email, password)
             
-            // Check password
-            val storedPassword = sharedPreferences.getString("password_$userId", null)
-            if (storedPassword != password) {
-                return@withContext Result.failure(Exception("Invalid password"))
-            }
-            
-            // Get user name
-            val name = sharedPreferences.getString("name_$userId", "") ?: ""
+            result.fold(
+                onSuccess = { userInfo ->
+                    // Get user metadata
+                    val name = userInfo.userMetadata?.get("name")?.toString() ?: ""
+            val loginTime = System.currentTimeMillis()
             
             // Create user object
-            val user = User(id = userId, email = email, password = "", name = name)
-            
-            // Save login state
-            val editor = sharedPreferences.edit()
-            editor.putString(KEY_USER_ID, userId)
-            editor.putString(KEY_EMAIL, email)
-            editor.putString(KEY_NAME, name)
-            editor.apply()
+            val user = User(
+                        id = userInfo.id,
+                        email = userInfo.email ?: email,
+                        password = "", // For security, we don't store the actual password in memory
+                name = name, 
+                lastLoginTime = loginTime
+            )
             
             // Update current user
             _currentUser.value = user
             
-            return@withContext Result.success(user)
+                    Result.success(user)
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Error logging in with Supabase", error)
+                    Result.failure(error)
+                }
+            )
         } catch (e: Exception) {
-            return@withContext Result.failure(e)
+            Log.e(TAG, "Error logging in", e)
+            Result.failure(e)
         }
     }
     
@@ -124,19 +142,23 @@ class AuthRepository private constructor(context: Context) {
      */
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            // Clear login state
-            val editor = sharedPreferences.edit()
-            editor.remove(KEY_USER_ID)
-            editor.remove(KEY_EMAIL)
-            editor.remove(KEY_NAME)
-            editor.apply()
+            // Logout with Supabase
+            val result = supabaseClient.signOut()
             
+            result.fold(
+                onSuccess = {
             // Clear current user
             _currentUser.value = null
-            
-            return@withContext Result.success(Unit)
+                    Result.success(Unit)
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Error logging out with Supabase", error)
+                    Result.failure(error)
+                }
+            )
         } catch (e: Exception) {
-            return@withContext Result.failure(e)
+            Log.e(TAG, "Error logging out", e)
+            Result.failure(e)
         }
     }
     
@@ -144,20 +166,26 @@ class AuthRepository private constructor(context: Context) {
      * Check if a user is logged in
      */
     fun isLoggedIn(): Boolean {
-        return _currentUser.value != null
+        return supabaseClient.isSignedIn()
+    }
+    
+    /**
+     * Get the current user
+     */
+    suspend fun getCurrentUser(): User? = withContext(Dispatchers.IO) {
+        return@withContext _currentUser.value
     }
     
     companion object {
-        private const val KEY_USER_ID = "current_user_id"
-        private const val KEY_EMAIL = "current_user_email"
-        private const val KEY_NAME = "current_user_name"
-        
         @Volatile
         private var instance: AuthRepository? = null
         
         fun getInstance(context: Context): AuthRepository {
             return instance ?: synchronized(this) {
-                instance ?: AuthRepository(context.applicationContext).also { instance = it }
+                instance ?: AuthRepository(
+                    context,
+                    SupabaseClient.getInstance()
+                ).also { instance = it }
             }
         }
     }

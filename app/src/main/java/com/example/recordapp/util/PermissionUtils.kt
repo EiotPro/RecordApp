@@ -9,35 +9,22 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import android.os.Environment
+import android.util.Log
 
 /**
  * Utility class for handling permissions
  */
 object PermissionUtils {
-
-    /**
-     * Check if camera permission is granted
-     */
-    fun hasCameraPermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    /**
-     * Check if camera permissions are granted - alias for hasCameraPermission
-     */
-    fun hasCameraPermissions(context: Context): Boolean {
-        return hasCameraPermission(context)
-    }
+    private const val TAG = "PermissionUtils"
+    private const val PREFS_NAME = "RecordAppPermissions"
+    private const val KEY_STORAGE_PERMISSION_GRANTED = "storage_permission_granted"
 
     /**
      * Check if storage permissions are granted
      */
     fun hasStoragePermissions(context: Context): Boolean {
-        // For Android 11 (API 30) and above with scoped storage, we need to check different permissions
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        // Check if permission is granted based on Android version
+        val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // For Android 11+, check if we have all-files access permission
             Environment.isExternalStorageManager()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -63,6 +50,47 @@ object PermissionUtils {
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
         }
+        
+        // If permission is granted, save the state
+        if (isPermissionGranted) {
+            savePermissionGranted(context, true)
+        }
+        
+        return isPermissionGranted
+    }
+    
+    /**
+     * Save the permission granted state to SharedPreferences
+     */
+    private fun savePermissionGranted(context: Context, granted: Boolean) {
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_STORAGE_PERMISSION_GRANTED, granted).apply()
+            Log.d(TAG, "Storage permission state saved: $granted")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving permission state", e)
+        }
+    }
+    
+    /**
+     * Check if permission was previously granted
+     */
+    fun wasPermissionPreviouslyGranted(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_STORAGE_PERMISSION_GRANTED, false)
+    }
+    
+    /**
+     * Reset permission state when logging out
+     */
+    fun resetPermissionState(context: Context) {
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().remove(KEY_STORAGE_PERMISSION_GRANTED).apply()
+            Log.d(TAG, "Storage permission state reset")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting permission state", e)
+        }
     }
 
     /**
@@ -70,9 +98,6 @@ object PermissionUtils {
      */
     fun getRequiredPermissions(): Array<String> {
         val permissions = mutableListOf<String>()
-
-        // Camera permission for capturing images
-        permissions.add(Manifest.permission.CAMERA)
 
         // Storage permissions based on Android version
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

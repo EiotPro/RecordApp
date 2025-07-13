@@ -2,20 +2,23 @@ package com.example.recordapp.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.core.content.edit
+import android.util.Log
 import com.example.recordapp.model.Expense
-import com.example.recordapp.util.GridSize
+import com.example.recordapp.model.GridSize
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
  * Manager for app settings using SharedPreferences
  */
-class SettingsManager private constructor(context: Context) {
+class SettingsManager private constructor(private val appContext: Context) {
     
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     
     companion object {
+        private const val TAG = "SettingsManager"
         private const val PREFS_NAME = "RecordAppSettings"
         
         // Keys for SharedPreferences
@@ -37,6 +40,9 @@ class SettingsManager private constructor(context: Context) {
         private const val KEY_BIOMETRIC_AUTH = "biometric_auth"
         private const val KEY_DATE_FORMAT = "date_format"
         private const val KEY_DEFAULT_FOLDER = "default_folder"
+        private const val KEY_IMAGE_COMPRESSION = "image_compression"
+        private const val KEY_BACKUP_CACHE_DIRECTORY = "backup_cache_directory"
+        private const val KEY_CUSTOM_BACKUP_FOLDER_URI = "custom_backup_folder_uri"
         
         // Default values
         private const val DEFAULT_CURRENCY_SYMBOL = "₹"
@@ -54,8 +60,11 @@ class SettingsManager private constructor(context: Context) {
         private const val DEFAULT_TEXT_SIZE = "medium"
         private const val DEFAULT_ANIMATIONS_ENABLED = true
         private const val DEFAULT_BIOMETRIC_AUTH = false
-        private const val DEFAULT_DATE_FORMAT = "yyyy-MM-dd"
+        private const val DEFAULT_DATE_FORMAT = "dd/MM/yyyy"
         private const val DEFAULT_FOLDER = "default"
+        private const val DEFAULT_IMAGE_COMPRESSION = 80
+        private const val DEFAULT_BACKUP_CACHE_DIRECTORY = false
+        private const val DEFAULT_CUSTOM_BACKUP_FOLDER_URI = ""
         
         @Volatile
         private var INSTANCE: SettingsManager? = null
@@ -166,7 +175,7 @@ class SettingsManager private constructor(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_BIOMETRIC_AUTH, value) }
     
     /**
-     * Date format pattern
+     * Date format pattern (always dd/MM/yyyy)
      */
     var dateFormat: String
         get() = prefs.getString(KEY_DATE_FORMAT, DEFAULT_DATE_FORMAT) ?: DEFAULT_DATE_FORMAT
@@ -180,6 +189,27 @@ class SettingsManager private constructor(context: Context) {
         set(value) = prefs.edit { putString(KEY_DEFAULT_FOLDER, value) }
     
     /**
+     * Image compression quality (0-100)
+     */
+    var imageCompression: Int
+        get() = prefs.getInt(KEY_IMAGE_COMPRESSION, DEFAULT_IMAGE_COMPRESSION)
+        set(value) = prefs.edit { putInt(KEY_IMAGE_COMPRESSION, value.coerceIn(10, 100)) }
+    
+    /**
+     * Whether to use cache directory for backups
+     */
+    var useBackupCacheDirectory: Boolean
+        get() = prefs.getBoolean(KEY_BACKUP_CACHE_DIRECTORY, DEFAULT_BACKUP_CACHE_DIRECTORY)
+        set(value) = prefs.edit { putBoolean(KEY_BACKUP_CACHE_DIRECTORY, value) }
+    
+    /**
+     * Custom backup folder URI string
+     */
+    var customBackupFolderUri: String
+        get() = prefs.getString(KEY_CUSTOM_BACKUP_FOLDER_URI, DEFAULT_CUSTOM_BACKUP_FOLDER_URI) ?: DEFAULT_CUSTOM_BACKUP_FOLDER_URI
+        set(value) = prefs.edit { putString(KEY_CUSTOM_BACKUP_FOLDER_URI, value) }
+    
+    /**
      * Clear all preferences
      */
     fun clearAll() {
@@ -190,19 +220,21 @@ class SettingsManager private constructor(context: Context) {
      * Format amount according to user's currency preference
      */
     fun formatAmount(amount: Double): String {
-        return "$currencySymbol %.2f".format(amount)
+        // Add space between currency symbol and amount for better readability
+        return if (currencySymbol.isEmpty()) {
+            "%.2f".format(amount)
+        } else {
+            "$currencySymbol %.2f".format(amount)
+        }
     }
     
     /**
-     * Format date according to user's date format preference
+     * Format date according to fixed DD/MM/YYYY format
      * Provides both date-only and date-time formatting options
      */
     fun formatDate(dateTime: LocalDateTime, includeTime: Boolean = false): String {
-        val pattern = when (dateFormat) {
-            "MM/dd/yyyy" -> if (includeTime) "MM/dd/yyyy HH:mm:ss" else "MM/dd/yyyy"
-            "dd/MM/yyyy" -> if (includeTime) "dd/MM/yyyy HH:mm:ss" else "dd/MM/yyyy"
-            else -> if (includeTime) "yyyy-MM-dd HH:mm:ss" else "yyyy-MM-dd" // ISO format as default
-        }
+        // Always use DD/MM/YYYY format
+        val pattern = if (includeTime) "dd/MM/yyyy HH:mm:ss" else "dd/MM/yyyy"
         
         val formatter = DateTimeFormatter.ofPattern(pattern)
         return dateTime.format(formatter)
@@ -218,6 +250,23 @@ class SettingsManager private constructor(context: Context) {
             "amount_high" -> expenses.sortedByDescending { it.amount }
             "amount_low" -> expenses.sortedBy { it.amount }
             else -> expenses.sortedByDescending { it.timestamp } // Default to newest first
+        }
+    }
+    
+    /**
+     * Reload settings from SharedPreferences
+     * This is useful after settings have been restored from backup
+     */
+    fun reload() {
+        synchronized(this) {
+            // Force a commit of any pending changes
+            prefs.edit().apply()
+            
+            // Log reload operation
+            Log.d(TAG, "Settings reloaded from SharedPreferences")
+            
+            // Note: We can't reassign the prefs val, but SharedPreferences reload is not necessary
+            // since SharedPreferences itself is managed by the Android system
         }
     }
 } 

@@ -10,16 +10,21 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.recordapp.ui.screens.DashboardScreen
 import com.example.recordapp.ui.screens.ExpenseDetailScreen
 import com.example.recordapp.ui.screens.ExpensesScreen
 import com.example.recordapp.ui.screens.HomeScreen
+import com.example.recordapp.ui.screens.ImageManagementScreen
 import com.example.recordapp.ui.screens.LoginScreen
 import com.example.recordapp.ui.screens.ProfileScreen
 import com.example.recordapp.ui.screens.SettingsScreen
 import com.example.recordapp.ui.screens.SignupScreen
+import com.example.recordapp.ui.screens.SplashScreen
 import com.example.recordapp.viewmodel.AuthViewModel
 import com.example.recordapp.viewmodel.ExpenseViewModel
+import com.example.recordapp.network.InternetConnectionChecker
+import javax.inject.Inject
 
 /**
  * List of main navigation items
@@ -37,7 +42,7 @@ val navigationItems = listOf(
 fun AppNavigation(
     expenseViewModel: ExpenseViewModel,
     navController: NavHostController,
-    startDestination: String = Screen.Login.route,
+    startDestination: String = Screen.Splash.route,
     modifier: Modifier = Modifier
 ) {
     // Create the auth view model
@@ -49,6 +54,15 @@ fun AppNavigation(
         startDestination = startDestination,
         modifier = modifier
     ) {
+        // Splash screen
+        composable(Screen.Splash.route) {
+            val isLoggedIn by authViewModel.uiState.collectAsState()
+            SplashScreen(
+                navController = navController,
+                isUserLoggedIn = isLoggedIn.isLoggedIn
+            )
+        }
+        
         // Authentication screens
         composable(Screen.Login.route) {
             LoginScreen(
@@ -82,7 +96,6 @@ fun AppNavigation(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 navController = navController,
-                viewModel = expenseViewModel,
                 authViewModel = authViewModel
             )
         }
@@ -99,6 +112,19 @@ fun AppNavigation(
             )
         }
         
+        // Image Management screen
+        composable(
+            route = Screen.ImageManagement.route,
+            arguments = listOf(navArgument("folderId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
+            ImageManagementScreen(
+                folderId = folderId,
+                viewModel = expenseViewModel,
+                navController = navController
+            )
+        }
+        
         // Profile screen - accessed from settings
         composable(Screen.Profile.route) {
             ProfileScreen(
@@ -110,10 +136,9 @@ fun AppNavigation(
 }
 
 /**
- * Check if user is logged in and return the appropriate start destination
+ * Always returns Splash screen as the start destination
  */
 @Composable
 fun getStartDestination(authViewModel: AuthViewModel): String {
-    val isLoggedIn by authViewModel.uiState.collectAsState()
-    return if (isLoggedIn.isLoggedIn) Screen.Home.route else Screen.Login.route
+    return Screen.Splash.route
 }

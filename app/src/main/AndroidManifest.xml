@@ -2,9 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Camera permission -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Internet permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
     <!-- Storage permissions - optimized for different Android versions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
@@ -17,6 +17,9 @@
     <!-- For creating and sharing PDF -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
                      tools:ignore="ScopedStorage" />
+                     
+    <!-- For persistent URI permissions (needed for DocumentFile) -->
+    <uses-permission android:name="android.permission.PERSISTABLE_URI_PERMISSION" />
 
     <application
         android:name=".RecordApplication"
@@ -31,6 +34,7 @@
         android:largeHeap="false"
         android:hardwareAccelerated="true"
         android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
         
         <activity
@@ -43,7 +47,23 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            
+            <!-- Supabase Authentication Redirect -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="com.example.recordapp"
+                    android:host="login-callback" />
+            </intent-filter>
         </activity>
+        
+        <!-- UCrop Activity -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
 
         <!-- FileProvider for sharing files and images -->
         <provider

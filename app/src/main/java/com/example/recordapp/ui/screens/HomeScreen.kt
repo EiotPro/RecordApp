@@ -53,12 +53,12 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.example.recordapp.R
 import com.example.recordapp.model.Expense
+import com.example.recordapp.model.GridSize
 import com.example.recordapp.ui.components.ExpenseList
+import com.example.recordapp.ui.components.FolderSelector
 import com.example.recordapp.ui.components.ImageCaptureDialog
-import com.example.recordapp.ui.components.PagedExpenseList
 import com.example.recordapp.ui.components.RecentExpenseCard
 import com.example.recordapp.ui.navigation.Screen
-import com.example.recordapp.util.GridSize
 import com.example.recordapp.util.PermissionUtils
 import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.viewmodel.ExpenseViewModel
@@ -66,7 +66,6 @@ import com.example.recordapp.viewmodel.ExpenseUiState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-import com.example.recordapp.ui.components.FolderSelector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +85,6 @@ fun HomeScreen(
     var showImageCaptureDialog by remember { mutableStateOf(false) }
     var showImageSelectionDialog by remember { mutableStateOf(false) }
     var currentImageUri by remember { mutableStateOf<Uri?>(null) }
-    var compressionQuality by remember { mutableStateOf(80) } // Default compression quality
     
     // Get accent color
     val accentColorResource = when (settings.accentColor) {
@@ -110,13 +108,13 @@ fun HomeScreen(
         }
     }
     
-    // Camera capture launcher
+    // Camera launcher for taking pictures
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
         if (success && currentImageUri != null) {
             // Process image with OCR using the selected compression quality
-            viewModel.processImageWithOcr(currentImageUri!!, compressionQuality)
+            viewModel.processImageWithOcr(currentImageUri!!, settings.imageCompression)
             showImageCaptureDialog = true
         }
     }
@@ -128,7 +126,7 @@ fun HomeScreen(
         uri?.let {
             currentImageUri = it
             // Process image with OCR using the selected compression quality
-            viewModel.processImageWithOcr(it, compressionQuality)
+            viewModel.processImageWithOcr(it, settings.imageCompression)
             showImageCaptureDialog = true
         }
     }
@@ -206,30 +204,41 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = { 
-                    Column {
-                        Text(
-                            "RecordApp",
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                        
-                        // Show current folder as subtitle
-                        if (currentFolder != "default") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Folder: $currentFolder",
-                                style = MaterialTheme.typography.bodySmall
+                                "RecordApp",
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                            
+                            // Show current folder as subtitle
+                            if (currentFolder != "default") {
+                                Text(
+                                    "Folder: $currentFolder",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        
+                        // Settings icon moved inside title row for less padding
+                        IconButton(
+                            onClick = { navController.navigate(Screen.Settings.route) },
+                            modifier = Modifier.padding(start = 0.dp)  // Remove left padding
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings"
                             )
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings"
-                        )
-                    }
+                    // Settings icon moved to title area
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colorResource(accentColorResource)
@@ -239,9 +248,7 @@ fun HomeScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {
-                    if (PermissionUtils.hasCameraPermission(context) &&
-                        PermissionUtils.hasStoragePermissions(context)
-                    ) {
+                    if (PermissionUtils.hasStoragePermissions(context)) {
                         // First show folder selection dialog
                         showFolderSelectionDialog = true
                     } else {
@@ -385,7 +392,7 @@ fun HomeScreen(
                 title = { Text("Permissions Required") },
                 text = {
                     Text(
-                        "Camera and storage permissions are required to use this app." +
+                        "Storage permissions are required to use this app." +
                                 " Please grant these permissions in app settings."
                     )
                 },
@@ -469,9 +476,11 @@ fun HomeScreen(
             EnhancedImageSelectionDialog(
                 onCameraSelected = {
                     showImageSelectionDialog = false
-                    val (_, uri) = viewModel.createImageFile()
-                    currentImageUri = uri
-                    cameraLauncher.launch(uri)
+                    // Use camera launcher
+                    currentImageUri = viewModel.createImageFileUri()
+                    currentImageUri?.let {
+                        cameraLauncher.launch(it)
+                    }
                 },
                 onGallerySelected = {
                     showImageSelectionDialog = false
@@ -496,14 +505,14 @@ fun HomeScreen(
                         serialNumber = serialNumber,
                         amount = amount,
                         description = description,
-                        compressionQuality = compressionQuality
+                        compressionQuality = settings.imageCompression
                     )
                     currentImageUri = null
                     showImageCaptureDialog = false
                 },
                 onOcrRequest = {
                     currentImageUri?.let {
-                        viewModel.processImageWithOcr(it, compressionQuality)
+                        viewModel.processImageWithOcr(it, settings.imageCompression)
                     }
                 },
                 onCancel = {
@@ -1244,7 +1253,7 @@ fun EnhancedImageSelectionDialog(
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                // Camera option
+                // First option - Camera
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1254,8 +1263,8 @@ fun EnhancedImageSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Photo,
-                        contentDescription = "Camera",
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = "Take Photo",
                         tint = accentColor,
                         modifier = Modifier.size(28.dp)
                     )
@@ -1272,7 +1281,7 @@ fun EnhancedImageSelectionDialog(
                         )
                         
                         Text(
-                            text = "Use your camera to capture receipt",
+                            text = "Capture a new image with your camera",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1291,8 +1300,8 @@ fun EnhancedImageSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = "Gallery",
+                        imageVector = Icons.Default.Collections,
+                        contentDescription = "Browse Gallery",
                         tint = accentColor,
                         modifier = Modifier.size(28.dp)
                     )
@@ -1303,13 +1312,13 @@ fun EnhancedImageSelectionDialog(
                             .padding(horizontal = 16.dp)
                     ) {
                         Text(
-                            text = "Choose from Gallery",
+                            text = "Browse Gallery",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         
                         Text(
-                            text = "Select existing image from your device",
+                            text = "Browse and select from all your images",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

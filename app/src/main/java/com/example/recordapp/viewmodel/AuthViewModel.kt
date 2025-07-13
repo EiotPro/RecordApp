@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.recordapp.model.User
 import com.example.recordapp.repository.AuthRepository
+import com.example.recordapp.util.PermissionUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,7 +37,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Register a new user
      */
-    fun register(email: String, password: String, confirmPassword: String, name: String) {
+    fun registerUser(email: String, password: String, confirmPassword: String, name: String) {
         // Validate inputs
         val validationResult = validateRegistrationInputs(email, password, confirmPassword)
         if (!validationResult.isValid) {
@@ -139,6 +140,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 
                 result.fold(
                     onSuccess = {
+                        // Reset permission state on logout
+                        PermissionUtils.resetPermissionState(getApplication())
+                        
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             isLoggedIn = false,

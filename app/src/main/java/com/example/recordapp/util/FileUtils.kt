@@ -13,6 +13,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.example.recordapp.util.SettingsManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -204,9 +205,15 @@ object FileUtils {
     /**
      * Save image from URI to a specific folder with compression
      */
-    fun saveImageToFolder(context: Context, sourceUri: Uri, folderName: String, quality: Int = DEFAULT_COMPRESSION_QUALITY): Uri? {
+    fun saveImageToFolder(context: Context, sourceUri: Uri, folderName: String, quality: Int? = null): Uri? {
         return try {
             Log.d(TAG, "Saving image to folder: $folderName with URI: $sourceUri")
+            
+            // Get settings manager for compression quality
+            val settingsManager = SettingsManager.getInstance(context)
+            val compressionQuality = quality ?: settingsManager.imageCompression
+            
+            Log.d(TAG, "Using compression quality: $compressionQuality")
             
             // Ensure folder exists
             val folder = createFolderIfNotExists(context, folderName)
@@ -216,7 +223,7 @@ object FileUtils {
             }
             
             // Compress the image
-            val compressedBitmap = compressImage(context, sourceUri, quality)
+            val compressedBitmap = compressImage(context, sourceUri, compressionQuality)
             if (compressedBitmap == null) {
                 Log.e(TAG, "Failed to compress image for URI: $sourceUri")
                 return null
@@ -227,8 +234,8 @@ object FileUtils {
             Log.d(TAG, "Created destination file: ${destinationFile.first.absolutePath}")
             
             // Save the compressed bitmap to the file
-            if (saveBitmapToFile(compressedBitmap, destinationFile.first, quality)) {
-                Log.d(TAG, "Image saved to folder: $folderName with compression quality: $quality")
+            if (saveBitmapToFile(compressedBitmap, destinationFile.first, compressionQuality)) {
+                Log.d(TAG, "Image saved to folder: $folderName with compression quality: $compressionQuality")
                 Log.d(TAG, "Saved to path: ${destinationFile.first.absolutePath}")
                 Log.d(TAG, "Generated URI: ${destinationFile.second}")
                 
@@ -366,6 +373,40 @@ object FileUtils {
         return storageDir
     }
     
+    /**
+     * Get the output directory for exported files
+     */
+    fun getOutputDirectory(context: Context): File {
+        val settingsManager = SettingsManager.getInstance(context)
+        val storageLocation = settingsManager.storageLocation
+        
+        val outputDir = when (storageLocation) {
+            "downloads" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // For Android 10+, we'll use the app-specific directory but with a "Downloads" subfolder
+                    val downloadsDir = File(context.getExternalFilesDir(null), "Downloads")
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
+                    downloadsDir
+                } else {
+                    // For older Android versions, we can use the public Downloads directory
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                }
+            }
+            else -> {
+                // Default to app's documents directory
+                getDocumentsDirectory(context)
+            }
+        }
+        
+        if (!outputDir.exists()) {
+            outputDir.mkdirs()
+        }
+        
+        return outputDir
+    }
+    
     // Get the properly formatted date as a string
     fun getFormattedDate(): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
@@ -436,5 +477,150 @@ object FileUtils {
         }
         
         return Pair(null, null)
+    }
+
+    /**
+     * Rotate a bitmap by specified degrees
+     */
+    fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
+        val matrix = android.graphics.Matrix()
+        matrix.postRotate(degrees)
+        
+        return Bitmap.createBitmap(
+            bitmap,
+            0,
+            0,
+            bitmap.width,
+            bitmap.height,
+            matrix,
+            true
+        )
+    }
+    
+    /**
+     * Rotate an image from URI and save it back to the same location
+     */
+    fun rotateImage(context: Context, imageUri: Uri, degrees: Float, compressionQuality: Int = DEFAULT_COMPRESSION_QUALITY): Uri? {
+        try {
+            Log.d(TAG, "Rotating image by $degrees degrees: $imageUri")
+            
+            // Get bitmap from URI
+            val bitmap = getBitmapFromUri(context, imageUri) ?: return null
+            
+            // Rotate the bitmap
+            val rotatedBitmap = rotateBitmap(bitmap, degrees)
+            
+            // Get the file path from URI
+            val file = getFileFromUri(context, imageUri)
+            if (file == null) {
+                Log.e(TAG, "Failed to get file from URI: $imageUri")
+                return null
+            }
+            
+            // Save the rotated bitmap back to the file
+            if (saveBitmapToFile(rotatedBitmap, file, compressionQuality)) {
+                Log.d(TAG, "Image rotated successfully and saved to: ${file.absolutePath}")
+                return imageUri
+            } else {
+                Log.e(TAG, "Failed to save rotated bitmap to file")
+                return null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error rotating image: ${e.message}", e)
+            return null
+        }
+    }
+    
+    /**
+     * Get File object from Uri
+     */
+    fun getFileFromUri(context: Context, uri: Uri): File? {
+        try {
+            // Handle content:// scheme
+            if (ContentResolver.SCHEME_CONTENT == uri.scheme) {
+                // Check if it's a FileProvider URI from our app
+                val path = uri.path
+                if (path != null && path.contains("/external/")) {
+                    val segments = path.split("/external/").toTypedArray()
+                    if (segments.size > 1) {
+                        val relativePath = segments[1]
+                        return File(context.getExternalFilesDir(null), relativePath)
+                    }
+                }
+                
+                // For other content URIs, try to get the actual file path
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val columnIndex = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                        if (columnIndex != -1) {
+                            val filePath = cursor.getString(columnIndex)
+                            if (!filePath.isNullOrEmpty()) {
+                                return File(filePath)
+                            }
+                        }
+                    }
+                }
+                
+                // If we couldn't get the file path, create a copy in the cache directory
+                val fileName = getFileNameFromUri(context, uri) ?: "temp_file"
+                val extension = getFileExtensionFromUri(context, uri) ?: ""
+                val tempFile = File(context.cacheDir, "${fileName}_copy${if (extension.isNotEmpty()) ".$extension" else ""}")
+                
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                return tempFile
+            }
+            // Handle file:// scheme
+            else if (ContentResolver.SCHEME_FILE == uri.scheme) {
+                return File(uri.path ?: "")
+            }
+            
+            Log.e(TAG, "Could not determine file path from URI: $uri")
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting file from URI", e)
+            return null
+        }
+    }
+    
+    /**
+     * Get file name from URI
+     */
+    private fun getFileNameFromUri(context: Context, uri: Uri): String? {
+        var fileName: String? = null
+        
+        if (ContentResolver.SCHEME_CONTENT == uri.scheme) {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                    if (columnIndex != -1) {
+                        fileName = cursor.getString(columnIndex)
+                    }
+                }
+            }
+        }
+        
+        if (fileName == null) {
+            fileName = uri.lastPathSegment
+        }
+        
+        return fileName
+    }
+    
+    /**
+     * Get file extension from URI
+     */
+    private fun getFileExtensionFromUri(context: Context, uri: Uri): String? {
+        val fileName = getFileNameFromUri(context, uri) ?: return null
+        val dotIndex = fileName.lastIndexOf('.')
+        return if (dotIndex > 0) {
+            fileName.substring(dotIndex + 1)
+        } else {
+            null
+        }
     }
 } 

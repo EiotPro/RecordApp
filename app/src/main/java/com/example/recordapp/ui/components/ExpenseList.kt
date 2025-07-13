@@ -1,33 +1,43 @@
 package com.example.recordapp.ui.components
 
+import android.util.Log
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.recordapp.R
 import com.example.recordapp.model.Expense
 import com.example.recordapp.util.animateDeletion
 import com.example.recordapp.util.fadeInOut
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.recordapp.viewmodel.ExpenseViewModel
 
 @Composable
 fun ExpenseList(
@@ -148,8 +158,19 @@ fun ExpenseItem(
     onDelete: () -> Unit,
     onMove: () -> Unit = {},
     onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: ExpenseViewModel? = null
 ) {
+    // Get receipt type icon and color
+    val (receiptIcon, receiptColor) = when (expense.receiptType) {
+        "PHYSICAL_RECEIPT" -> Icons.Default.Receipt to MaterialTheme.colorScheme.tertiary
+        "DIGITAL_PAYMENT" -> Icons.Default.CreditCard to MaterialTheme.colorScheme.primary
+        "UPI_PAYMENT" -> Icons.Default.QrCode to MaterialTheme.colorScheme.secondary
+        else -> Icons.Default.Receipt to MaterialTheme.colorScheme.outline
+    }
+    
+    val scope = rememberCoroutineScope()
+    
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -179,11 +200,16 @@ fun ExpenseItem(
                 )
             }
             
-            // Display folder name
-            if (expense.folderName != "default") {
+            // Row with folder name and receipt type
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Display folder name
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Folder,
@@ -195,36 +221,114 @@ fun ExpenseItem(
                     Spacer(modifier = Modifier.width(4.dp))
                     
                     Text(
-                        text = expense.folderName,
+                        text = if (expense.folderName != "default") expense.folderName else "Default Folder",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (expense.folderName != "default") 
+                                MaterialTheme.colorScheme.primary 
+                                else MaterialTheme.colorScheme.outline
                     )
                 }
-            } else {
-                // Show default folder indicator
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Default Folder",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                
+                // Display receipt type if available
+                if (expense.hasReceiptType()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = receiptIcon,
+                            contentDescription = null,
+                            tint = receiptColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.width(4.dp))
+                        
+                        Text(
+                            text = expense.getReceiptTypeDisplayName(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = receiptColor
+                        )
+                    }
                 }
             }
             
             Spacer(modifier = Modifier.height(8.dp))
             // Image
             if (expense.imagePath != null) {
-                AsyncImage(
-                    model = expense.imagePath,
-                    contentDescription = "Expense image",
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
-                    contentScale = ContentScale.Crop
-                )
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(expense.imagePath)
+                            .memoryCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .diskCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .build(),
+                        contentDescription = "Expense image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    // Only show rotation controls if viewModel is provided
+                    viewModel?.let {
+                        // Image Rotation Controls
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            // Rotate Left Button
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.rotateExpenseImage(expense.id, -90f)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                        shape = CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.RotateLeft,
+                                    contentDescription = "Rotate Left",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            // Rotate Right Button
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.rotateExpenseImage(expense.id, 90f)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                        shape = CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.RotateRight,
+                                    contentDescription = "Rotate Right",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier

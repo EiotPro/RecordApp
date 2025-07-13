@@ -10,12 +10,13 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.example.recordapp.model.Expense
 import com.example.recordapp.repository.ExpenseRepository
-import com.example.recordapp.util.CsvGenerator
+import com.example.recordapp.util.CsvUtils
 import com.example.recordapp.util.FileUtils
 import com.example.recordapp.util.OcrResult
 import com.example.recordapp.util.OcrUtils
-import com.example.recordapp.util.PdfGenerator
-import com.example.recordapp.util.GridSize
+import com.example.recordapp.util.PdfUtils
+import com.example.recordapp.model.GridSize
+import com.example.recordapp.util.SettingsManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,20 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.UUID
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
+import kotlin.math.min
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.example.recordapp.util.AppImageLoader
+import com.example.recordapp.util.ZipUtils
 
 /**
  * ViewModel for expense operations
@@ -251,7 +266,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         folderName: String = "default",
         imagePath: Uri? = null,
         serialNumber: String = "",
-        compressionQuality: Int = FileUtils.DEFAULT_COMPRESSION_QUALITY
+        compressionQuality: Int = FileUtils.DEFAULT_COMPRESSION_QUALITY,
+        receiptType: String = "",
+        generateRandomSerialIfBlank: Boolean = true
     ) {
         viewModelScope.launch {
             try {
@@ -272,14 +289,24 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     savedUri
                 }
                 
-                // Create the expense with the current folder name
+                // Handle serial number generation for blank entries
+                val finalSerialNumber = if (serialNumber.isBlank() && generateRandomSerialIfBlank) {
+                    val randomSerial = "GEN-" + UUID.randomUUID().toString().substring(0, 8)
+                    Log.d(TAG, "Generated random serial number: $randomSerial for blank entry")
+                    randomSerial
+                } else {
+                    serialNumber
+                }
+                
+                // Create the expense with the current folder name and final serial number
                 val expense = repository.addExpense(
                     imagePath = processedImageUri ?: imagePath,
                     timestamp = LocalDateTime.now(),
-                    serialNumber = serialNumber,
+                    serialNumber = finalSerialNumber,
                     amount = amount,
                     description = description,
-                    folderName = folderName
+                    folderName = folderName,
+                    receiptType = receiptType
                 )
                 
                 Log.d(TAG, "Expense added successfully with ID: ${expense.id} in folder: ${expense.folderName}")
@@ -364,8 +391,23 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
                 
+                // Debug log expenses before verification
+                Log.d(TAG, "Generating PDF for ${allExpenses.size} expenses")
+                allExpenses.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Pre-PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
+                // Use original expenses without modifying serial numbers
+                val verifiedExpenses = allExpenses
+                
+                // Log expenses
+                verifiedExpenses.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Post-verify PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
                 val context = getApplication<Application>()
-                val pdfFile = PdfGenerator.generatePdf(context, allExpenses)
+                // Using PdfUtils companion object method to generate PDF
+                val pdfFile = PdfUtils.generateExpensesPdf(context, verifiedExpenses)
                 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -404,7 +446,8 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 }
                 
                 val context = getApplication<Application>()
-                val pdfFile = PdfGenerator.generateSingleExpensePdf(context, expense)
+                // Using PdfUtils companion object method
+                val pdfFile = PdfUtils.generateSingleExpensePdf(context, expense)
                 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -442,15 +485,29 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
                 
+                // Log expenses for debugging
+                Log.d(TAG, "Generating CSV for ${allExpenses.size} expenses")
+                allExpenses.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Pre-CSV Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
                 val context = getApplication<Application>()
-                val csvFile = CsvGenerator.generateCsv(context, allExpenses)
+                // Using CsvUtils companion object method
+                val csvFile = CsvUtils.generateExpensesCsv(context, allExpenses)
                 
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = null
-                )
-                
-                onComplete(csvFile)
+                if (csvFile != null && csvFile.exists() && csvFile.length() > 0) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = null
+                    )
+                    onComplete(csvFile)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Failed to generate CSV: Empty file created"
+                    )
+                    onComplete(null)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating CSV", e)
                 _uiState.value = _uiState.value.copy(
@@ -481,24 +538,42 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
                 
-                val context = getApplication<Application>()
-                val csvFile = CsvGenerator.generateCsvByFolder(context, allExpenses, folderName)
-                
-                if (csvFile != null && csvFile.exists() && csvFile.length() > 0) {
-                    Log.d(TAG, "CSV Export Success: ${csvFile.absolutePath}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = null
-                    )
-                    onComplete(csvFile)
+                // Filter expenses for the specific folder
+                val folderExpenses = if (folderName == "All") {
+                    Log.d(TAG, "Using all expenses for 'All' folder CSV")
+                    allExpenses  // For "All" folder, include all expenses
                 } else {
-                    Log.e(TAG, "CSV Export Failed: File was null or empty")
+                    val filteredExpenses = allExpenses.filter { it.folderName == folderName }
+                    Log.d(TAG, "Found ${filteredExpenses.size} expenses in folder: $folderName for CSV")
+                    filteredExpenses
+                }
+                
+                if (folderExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses found for specified folder")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "Failed to export CSV: Empty file created"
+                        errorMessage = "No expenses found in folder"
                     )
                     onComplete(null)
+                    return@launch
                 }
+                
+                val context = getApplication<Application>()
+                
+                // Using CsvUtils companion object method
+                val csvFile = if (folderName == "All") {
+                    // Use generateExpensesCsv for "All" folder
+                    CsvUtils.generateExpensesCsv(context, folderExpenses)
+                } else {
+                    CsvUtils.generateCsvByFolder(context, allExpenses, folderName)
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = null
+                )
+                
+                onComplete(csvFile)
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating CSV for folder: $folderName", e)
                 _uiState.value = _uiState.value.copy(
@@ -607,17 +682,23 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     
     /**
      * Generate PDF with images in grid layout
+     * This is used for exporting all expenses regardless of folder
      */
     fun generateImageGridPdf(gridSize: GridSize, onComplete: (File?) -> Unit) {
         viewModelScope.launch {
             try {
-                _uiState.value = _uiState.value.copy(isLoading = true)
+                val start = System.currentTimeMillis()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    processingMessage = "Preparing grid PDF for all images"
+                )
                 
                 val allExpenses = repository.getAllExpenses()
                 
                 if (allExpenses.isEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        processingMessage = null,
                         errorMessage = "No expenses with images to export"
                     )
                     onComplete(null)
@@ -630,25 +711,78 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 if (expensesWithImages.isEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        processingMessage = null,
                         errorMessage = "No expenses with images to export"
                     )
                     onComplete(null)
                     return@launch
                 }
                 
-                val context = getApplication<Application>()
-                val pdfFile = PdfGenerator.generateImageGridPdf(context, expensesWithImages, gridSize)
-                
                 _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = null
+                    processingMessage = "Processing ${expensesWithImages.size} images in grid layout"
                 )
                 
-                onComplete(pdfFile)
+                // Use original expenses with images without modifying serial numbers
+                val verifiedExpenses = expensesWithImages
+                
+                // Log expenses for image grid
+                verifiedExpenses.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Image Grid Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
+                val context = getApplication<Application>()
+                try {
+                    // Use companion object method with withContext to run on IO thread
+                    val pdfFile = withContext(Dispatchers.IO) {
+                        PdfUtils.generateImageGridPdf(context, verifiedExpenses, gridSize)
+                    }
+                    
+                    if (pdfFile != null && pdfFile.exists() && pdfFile.length() > 0) {
+                        val end = System.currentTimeMillis()
+                        val elapsedSeconds = (end - start) / 1000
+                        
+                        Log.d(TAG, "Generated grid PDF with ${verifiedExpenses.size} expenses. File: ${pdfFile.absolutePath}")
+                        Log.d(TAG, "PDF generation completed in $elapsedSeconds seconds")
+                        
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = null,
+                            successMessage = "PDF generated successfully in $elapsedSeconds seconds"
+                        )
+                        
+                        onComplete(pdfFile)
+                    } else {
+                        Log.e(TAG, "Grid PDF Export Failed: File was null or empty")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = "Failed to export grid PDF: Empty file created"
+                        )
+                        onComplete(null)
+                    }
+                } catch (e: OutOfMemoryError) {
+                    Log.e(TAG, "Out of memory error during PDF generation", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Not enough memory to generate PDF. Try reducing image quality in Settings."
+                    )
+                    onComplete(null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error generating grid PDF", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Failed to generate grid PDF: ${e.message}"
+                    )
+                    onComplete(null)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating grid PDF", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
+                    processingMessage = null,
                     errorMessage = "Failed to generate grid PDF: ${e.message}"
                 )
                 onComplete(null)
@@ -682,11 +816,16 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     
     /**
      * Generate PDF with all expenses in a specific folder
+     * This now uses the same grid layout system as folder grid PDFs
      */
     fun generatePdfByFolder(folderName: String, onComplete: (File?) -> Unit) {
         viewModelScope.launch {
             try {
-                _uiState.value = _uiState.value.copy(isLoading = true)
+                val start = System.currentTimeMillis()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    processingMessage = "Preparing PDF for folder: $folderName"
+                )
                 
                 Log.d(TAG, "Starting PDF generation for folder: $folderName")
                 val allExpenses = repository.getAllExpenses()
@@ -695,6 +834,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     Log.e(TAG, "No expenses to generate PDF - expenses list is empty")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        processingMessage = null,
                         errorMessage = "No expenses to generate PDF"
                     )
                     onComplete(null)
@@ -702,44 +842,151 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 }
                 
                 Log.d(TAG, "Found ${allExpenses.size} total expenses")
-                val folderExpenses = allExpenses.filter { it.folderName == folderName }
-                Log.d(TAG, "Found ${folderExpenses.size} expenses in folder: $folderName")
+                // For "All" folder, include all expenses, otherwise filter by folderName
+                val folderExpenses = if (folderName == "All") {
+                    Log.d(TAG, "Using all expenses for 'All' folder")
+                    allExpenses
+                } else {
+                    val filteredExpenses = allExpenses.filter { it.folderName == folderName }
+                    Log.d(TAG, "Found ${filteredExpenses.size} expenses in folder: $folderName")
+                    filteredExpenses
+                }
+                
+                if (folderExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses found for specified folder")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses found in folder"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                // Filter expenses with images
+                val expensesWithImages = folderExpenses.filter { it.imagePath != null }
+                if (expensesWithImages.isEmpty()) {
+                    Log.e(TAG, "No expenses with images found in folder: $folderName")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses with images in folder"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    processingMessage = "Processing ${expensesWithImages.size} images for folder: $folderName"
+                )
+                
+                // Use original folder expenses without modifying serial numbers
+                val verifiedExpenses = folderExpenses
+                
+                // Get default grid size from settings
+                val settings = SettingsManager.getInstance(getApplication<Application>())
+                val gridSize = try {
+                    GridSize.valueOf(settings.defaultGridSize)
+                } catch (e: Exception) {
+                    // Default to magazine layout for best presentation
+                    GridSize.MAGAZINE_LAYOUT
+                }
+                
+                // Log verified folder expenses for PDF
+                Log.d(TAG, "Generating folder PDF for '$folderName' with ${verifiedExpenses.size} expenses using grid size: ${gridSize.name}")
+                verifiedExpenses.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Folder PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
                 
                 val context = getApplication<Application>()
+                
                 try {
-                    val pdfFile = PdfGenerator.generatePdfByFolder(context, allExpenses, folderName)
+                    // Using PdfUtils companion object method with the grid layout
+                    val pdfFile = withContext(Dispatchers.IO) {
+                        if (folderName == "All") {
+                            // For "All" folder, use the special grid layout that doesn't filter by folder name
+                            PdfUtils.generateAllExpensesGridPdf(context, verifiedExpenses, gridSize)
+                        } else {
+                            // For specific folders, use the grid layout
+                            PdfUtils.generateFolderGridPdf(context, verifiedExpenses, folderName, gridSize)
+                        }
+                    }
                     
                     if (pdfFile != null && pdfFile.exists() && pdfFile.length() > 0) {
+                        val end = System.currentTimeMillis()
+                        val elapsedSeconds = (end - start) / 1000
+                        
                         Log.d(TAG, "PDF Export Success: ${pdfFile.absolutePath}")
                         Log.d(TAG, "PDF file exists: ${pdfFile.exists()}, size: ${pdfFile.length()} bytes")
-                        Log.d(TAG, "PDF file path: ${pdfFile.absolutePath}")
-                        Log.d(TAG, "PDF file can read: ${pdfFile.canRead()}")
+                        Log.d(TAG, "PDF generation completed in $elapsedSeconds seconds")
                         
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
-                            errorMessage = null
+                            processingMessage = null,
+                            errorMessage = null,
+                            successMessage = "PDF generated successfully in $elapsedSeconds seconds"
                         )
                         onComplete(pdfFile)
                     } else {
                         Log.e(TAG, "PDF Export Failed: File was null or empty")
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
+                            processingMessage = null,
                             errorMessage = "Failed to export PDF: Empty file created"
                         )
                         onComplete(null)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in PDF generation process", e)
+                } catch (e: OutOfMemoryError) {
+                    Log.e(TAG, "Out of memory error during PDF generation", e)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Not enough memory to generate PDF. Try reducing image quality in Settings."
+                    )
+                    onComplete(null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in PDF generation process for folder: $folderName", e)
+                    Log.e(TAG, "Expense count: ${verifiedExpenses.size}, Grid size: ${gridSize.name}")
+                    
+                    // Log more details about the exception
+                    e.printStackTrace()
+                    
+                    // Check if there are any specific issues with the expenses
+                    try {
+                        val hasExpensesWithNoImage = verifiedExpenses.any { it.imagePath == null }
+                        val hasExpensesWithNoSerialNumber = verifiedExpenses.any { it.serialNumber.isBlank() }
+                        
+                        Log.e(TAG, "Diagnostics: hasExpensesWithNoImage=$hasExpensesWithNoImage, " +
+                              "hasExpensesWithNoSerialNumber=$hasExpensesWithNoSerialNumber")
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Error during diagnostics", e2)
+                    }
+                    
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
                         errorMessage = "PDF generation error: ${e.message}"
                     )
                     onComplete(null)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating PDF for folder: $folderName", e)
+                
+                // Log more details about the setup process
+                try {
+                    val folderExpenses = if (folderName == "All") {
+                        "All expenses count: ${repository.getAllExpenses().size}"
+                    } else {
+                        "Folder expenses count: ${repository.getAllExpenses().count { it.folderName == folderName }}"
+                    }
+                    Log.e(TAG, folderExpenses)
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Error getting expense count", e2)
+                }
+                
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
+                    processingMessage = null,
                     errorMessage = "Failed to generate PDF: ${e.message}"
                 )
                 onComplete(null)
@@ -813,66 +1060,38 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
      * Add a new expense with an image
      */
     fun addExpenseWithImage(
-        description: String,
-        amount: Double,
-        folderName: String,
-        imageUri: Uri?
+        description: String = "",
+        amount: Double = 0.0,
+        folderName: String = "default",
+        imageUri: Uri? = null,
+        serialNumber: String = "",
+        compressionQuality: Int? = null,
+        generateRandomSerialIfBlank: Boolean = true
     ) {
-        viewModelScope.launch {
-            try {
-                _uiState.value = _uiState.value.copy(isLoading = true)
-                
-                if (imageUri == null) {
-                    // Create without image
-                    addExpense(
-                        description = description,
-                        amount = amount,
-                        folderName = folderName
-                    )
-                    return@launch
-                }
-                
-                // Create expense with the image URI
-                val expense = Expense(
-                    description = description,
-                    amount = amount,
-                    folderName = folderName,
-                    imagePath = imageUri,
-                    timestamp = LocalDateTime.now()
-                )
-                
-                // Add to repository
-                repository.addExpense(expense)
-                
-                // Refresh folders to update counts
-                refreshFolders()
-                
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = null
-                )
-                
-                Log.d(TAG, "Added expense with image: $description, $amount, $folderName")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding expense with image", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = "Failed to add expense: ${e.message}"
-                )
-            }
-        }
+        // Get the receipt type from OCR result if available
+        val receiptType = _ocrResult.value?.receiptType ?: ""
+        
+        // Use compression setting from settings manager if not specified
+        val compQuality = compressionQuality ?: SettingsManager.getInstance(getApplication()).imageCompression
+        
+        addExpense(
+            description = description,
+            amount = amount,
+            folderName = folderName,
+            imagePath = imageUri,
+            serialNumber = serialNumber,
+            compressionQuality = compQuality,
+            receiptType = receiptType,
+            generateRandomSerialIfBlank = generateRandomSerialIfBlank
+        )
     }
     
     /**
      * Format currency value based on locale settings
      */
     fun formatCurrency(amount: Double): String {
-        val currencyFormatter = NumberFormat.getCurrencyInstance().apply {
-            currency = Currency.getInstance(Locale.getDefault())
-            minimumFractionDigits = 2
-            maximumFractionDigits = 2
-        }
-        return currencyFormatter.format(amount)
+        val settingsManager = SettingsManager.getInstance(getApplication())
+        return settingsManager.formatAmount(amount)
     }
     
     /**
@@ -1062,6 +1281,698 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
     
+    /**
+     * Get all images in a folder
+     */
+    fun getFolderImages(folderName: String): Flow<List<Uri>> = flow {
+        try {
+            val allExpenses = repository.getAllExpenses()
+            val folderExpenses = allExpenses.filter { it.folderName == folderName }
+            
+            // Filter expenses with images and extract their image URIs
+            val imageUris = folderExpenses
+                .filter { it.imagePath != null }
+                .sortedWith(compareBy { it.displayOrder })  // Ensure consistent ordering by displayOrder
+                .map { it.imagePath!! }
+            
+            Log.d(TAG, "Retrieved ${imageUris.size} images from folder $folderName (sorted by displayOrder)")
+            emit(imageUris)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting folder images", e)
+            emit(emptyList())
+        }
+    }
+    
+    /**
+     * Reorder images in a folder
+     */
+    fun reorderFolderImages(folderName: String, newOrder: List<Uri>) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+                
+                Log.d(TAG, "Reordering images in folder: $folderName, new order size: ${newOrder.size}")
+                
+                // Skip processing if new order is empty
+                if (newOrder.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    return@launch
+                }
+                
+                val allExpenses = repository.getAllExpenses()
+                val folderExpenses = allExpenses.filter { it.folderName == folderName }
+                
+                // Create a mapping of image URI to expense
+                val imageToExpense = folderExpenses
+                    .filter { it.imagePath != null }
+                    .associateBy { it.imagePath!! }
+                
+                // Log info about items being reordered
+                Log.d(TAG, "Found ${imageToExpense.size} expenses with images in folder")
+                
+                // Validate if all URIs in the new order exist in the folder
+                val missingUris = newOrder.filter { !imageToExpense.containsKey(it) }
+                if (missingUris.isNotEmpty()) {
+                    Log.e(TAG, "Error reordering: ${missingUris.size} URIs not found in folder expenses")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Some images could not be reordered. Please try again."
+                    )
+                    return@launch
+                }
+                
+                // Update display order for all images in the new order
+                newOrder.forEachIndexed { index, uri ->
+                    val expense = imageToExpense[uri]
+                    if (expense != null) {
+                        // Create updated expense with new display order
+                        val updatedExpense = expense.copy(
+                            displayOrder = index
+                        )
+                        
+                        // Update in the repository
+                        repository.updateExpense(updatedExpense)
+                        Log.d(TAG, "Updated expense ${expense.id}, new order: $index")
+                    }
+                }
+                
+                // Also update displayOrder for expenses without images to put them at the end
+                val nonImageExpenses = folderExpenses.filter { it.imagePath == null }
+                val startOrderForNonImages = newOrder.size
+                
+                nonImageExpenses.forEachIndexed { index, expense ->
+                    val updatedExpense = expense.copy(
+                        displayOrder = startOrderForNonImages + index
+                    )
+                    repository.updateExpense(updatedExpense)
+                }
+                
+                // Force refresh of the UI to show updated order
+                refreshExpenseLists()
+                
+                Log.d(TAG, "Successfully reordered ${newOrder.size} images in folder: $folderName")
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error reordering folder images", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to reorder images: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * Force refresh of expense lists
+     */
+    private fun refreshExpenseLists() {
+        // Clear folder stats cache to force refresh
+        folderStatsCache.clear()
+        
+        // Refresh folders
+        refreshFolders()
+        
+        // Trigger a refresh of the paged expenses by briefly changing the selected folder
+        val currentFolder = _selectedViewFolder.value
+        viewModelScope.launch {
+            // Toggle to null and back to force refresh
+            _selectedViewFolder.value = null
+            delay(100)  // Short delay
+            _selectedViewFolder.value = currentFolder
+        }
+    }
+    
+    /**
+     * Get paginated folder images for more efficient loading of large collections
+     */
+    fun getPaginatedFolderImages(folderName: String, pageSize: Int = 20): Flow<PagingData<Uri>> {
+        return Pager(
+            config = PagingConfig(
+                pageSize = pageSize,
+                enablePlaceholders = true,
+                maxSize = pageSize * 3
+            )
+        ) {
+            object : PagingSource<Int, Uri>() {
+                override suspend fun load(params: LoadParams<Int>): androidx.paging.PagingSource.LoadResult<Int, Uri> {
+                    val page = params.key ?: 0
+                    
+                    return try {
+                        // Get all expenses for the folder
+                        val allExpenses = repository.getAllExpenses()
+                        val folderExpenses = allExpenses.filter { it.folderName == folderName }
+                        
+                        // Filter expenses with images, extract URIs, and sort by display order
+                        val imageUris = folderExpenses
+                            .filter { it.imagePath != null }
+                            .sortedWith(compareBy { it.displayOrder })  // Ensure consistent ordering
+                            .map { it.imagePath!! }
+                        
+                        Log.d(TAG, "Paginated loading for folder $folderName: ${imageUris.size} images (sorted by displayOrder)")
+                        
+                        // Calculate page data
+                        val startIndex = page * params.loadSize
+                        val endIndex = min(startIndex + params.loadSize, imageUris.size)
+                        
+                        // Return paginated results
+                        if (startIndex < imageUris.size) {
+                            val pagedData = imageUris.subList(startIndex, endIndex)
+                            val nextKey = if (endIndex < imageUris.size) page + 1 else null
+                            Log.d(TAG, "Returning page $page with ${pagedData.size} images")
+                            
+                            androidx.paging.PagingSource.LoadResult.Page(
+                                data = pagedData,
+                                prevKey = if (page > 0) page - 1 else null,
+                                nextKey = nextKey
+                            )
+                        } else {
+                            Log.d(TAG, "No more pages available for folder $folderName")
+                            androidx.paging.PagingSource.LoadResult.Page(
+                                data = emptyList(),
+                                prevKey = if (page > 0) page - 1 else null,
+                                nextKey = null
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading paginated folder images", e)
+                        androidx.paging.PagingSource.LoadResult.Error(e)
+                    }
+                }
+                
+                override fun getRefreshKey(state: PagingState<Int, Uri>): Int? {
+                    return state.anchorPosition?.let { anchorPosition ->
+                        val anchorPage = state.closestPageToPosition(anchorPosition)
+                        anchorPage?.prevKey?.plus(1) ?: anchorPage?.nextKey?.minus(1)
+                    }
+                }
+            }
+        }.flow
+    }
+    
+    /**
+     * Delete an image from a folder
+     */
+    fun deleteImageFromFolder(folderName: String, imageUri: Uri) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+                
+                Log.d(TAG, "Deleting image from folder: $folderName, URI: $imageUri")
+                
+                val allExpenses = repository.getAllExpenses()
+                val expenseToDelete = allExpenses.find { 
+                    it.folderName == folderName && it.imagePath == imageUri 
+                }
+                
+                if (expenseToDelete != null) {
+                    // Delete the expense with this image
+                    repository.deleteExpense(expenseToDelete.id)
+                    
+                    // Force refresh of the UI to show updated list
+                    refreshExpenseLists()
+                    
+                    Log.d(TAG, "Successfully deleted image from folder: $folderName")
+                } else {
+                    Log.e(TAG, "Image not found in folder: $folderName, URI: $imageUri")
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Image not found in folder"
+                    )
+                }
+                
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting image from folder", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to delete image: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * Get paginated expenses (with images) for a folder
+     */
+    fun getPaginatedFolderExpenses(folderName: String, pageSize: Int = 20): Flow<PagingData<Expense>> {
+        return Pager(
+            config = PagingConfig(
+                pageSize = pageSize,
+                enablePlaceholders = true,
+                maxSize = pageSize * 3
+            ),
+            pagingSourceFactory = {
+                object : PagingSource<Int, Expense>() {
+                    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Expense> {
+                        val page = params.key ?: 0
+                        return try {
+                            val allExpenses = repository.getAllExpenses()
+                            val folderExpenses = allExpenses.filter { it.folderName == folderName && it.imagePath != null }
+                                .sortedWith(compareBy { it.displayOrder })
+                            val startIndex = page * params.loadSize
+                            val endIndex = kotlin.math.min(startIndex + params.loadSize, folderExpenses.size)
+                            val pagedData = if (startIndex < folderExpenses.size) folderExpenses.subList(startIndex, endIndex) else emptyList()
+                            val nextKey = if (endIndex < folderExpenses.size) page + 1 else null
+                            LoadResult.Page(
+                                data = pagedData,
+                                prevKey = if (page > 0) page - 1 else null,
+                                nextKey = nextKey
+                            )
+                        } catch (e: Exception) {
+                            LoadResult.Error(e)
+                        }
+                    }
+                    override fun getRefreshKey(state: PagingState<Int, Expense>): Int? {
+                        return state.anchorPosition?.let { anchorPosition ->
+                            val anchorPage = state.closestPageToPosition(anchorPosition)
+                            anchorPage?.prevKey?.plus(1) ?: anchorPage?.nextKey?.minus(1)
+                        }
+                    }
+                }
+            }
+        ).flow
+    }
+    
+    /**
+     * Generate PDF with all expenses in a specific folder with grid layout
+     */
+    fun generateFolderGridPdf(folderName: String, gridSize: GridSize, onComplete: (File?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val start = System.currentTimeMillis()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    processingMessage = "Preparing grid PDF for folder: $folderName"
+                )
+                
+                Log.d(TAG, "Starting Grid PDF generation for folder: $folderName with grid size: ${gridSize.name}")
+                val allExpenses = repository.getAllExpenses()
+                
+                if (allExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses to generate PDF - expenses list is empty")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses to generate PDF"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                Log.d(TAG, "Found ${allExpenses.size} total expenses")
+                val folderExpenses = allExpenses.filter { it.folderName == folderName }
+                Log.d(TAG, "Found ${folderExpenses.size} expenses in folder: $folderName")
+                
+                // Filter expenses with images
+                val expensesWithImages = folderExpenses.filter { it.imagePath != null }
+                if (expensesWithImages.isEmpty()) {
+                    Log.e(TAG, "No expenses with images found in folder: $folderName")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses with images in folder"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    processingMessage = "Processing ${expensesWithImages.size} images in grid layout"
+                )
+                
+                // Log verified folder expenses for PDF
+                Log.d(TAG, "Generating folder grid PDF for '$folderName' with ${expensesWithImages.size} expenses")
+                expensesWithImages.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Folder Grid PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
+                val context = getApplication<Application>()
+                
+                try {
+                    // Using PdfUtils companion object method
+                    val pdfFile = withContext(Dispatchers.IO) {
+                        PdfUtils.generateFolderGridPdf(context, allExpenses, folderName, gridSize)
+                    }
+                    
+                    if (pdfFile != null && pdfFile.exists() && pdfFile.length() > 0) {
+                        val end = System.currentTimeMillis()
+                        val elapsedSeconds = (end - start) / 1000
+                        
+                        Log.d(TAG, "Grid PDF Export Success: ${pdfFile.absolutePath}")
+                        Log.d(TAG, "Grid PDF file exists: ${pdfFile.exists()}, size: ${pdfFile.length()} bytes")
+                        Log.d(TAG, "PDF generation completed in $elapsedSeconds seconds")
+                        
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = null,
+                            successMessage = "PDF generated successfully in $elapsedSeconds seconds"
+                        )
+                        onComplete(pdfFile)
+                    } else {
+                        Log.e(TAG, "Grid PDF Export Failed: File was null or empty")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = "Failed to export grid PDF: Empty file created"
+                        )
+                        onComplete(null)
+                    }
+                } catch (e: OutOfMemoryError) {
+                    Log.e(TAG, "Out of memory error during PDF generation", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Not enough memory to generate PDF. Try reducing image quality in Settings."
+                    )
+                    onComplete(null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in grid PDF generation process", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Grid PDF generation error: ${e.message}"
+                    )
+                    onComplete(null)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating grid PDF for folder: $folderName", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    processingMessage = null,
+                    errorMessage = "Failed to generate grid PDF: ${e.message}"
+                )
+                onComplete(null)
+            }
+        }
+    }
+    
+    /**
+     * Generate PDF with all expenses in a specific folder with list layout
+     */
+    fun generateFolderListPdf(folderName: String, onComplete: (File?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val start = System.currentTimeMillis()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    processingMessage = "Preparing list PDF for folder: $folderName"
+                )
+                
+                Log.d(TAG, "Starting List PDF generation for folder: $folderName")
+                val allExpenses = repository.getAllExpenses()
+                
+                if (allExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses to generate PDF - expenses list is empty")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses to generate PDF"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                Log.d(TAG, "Found ${allExpenses.size} total expenses")
+                val folderExpenses = allExpenses.filter { it.folderName == folderName }
+                Log.d(TAG, "Found ${folderExpenses.size} expenses in folder: $folderName")
+                
+                // Filter expenses with images
+                val expensesWithImages = folderExpenses.filter { it.imagePath != null }
+                if (expensesWithImages.isEmpty()) {
+                    Log.e(TAG, "No expenses with images found in folder: $folderName")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses with images in folder"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    processingMessage = "Processing ${expensesWithImages.size} images in list format"
+                )
+                
+                // Log folder expenses for PDF
+                Log.d(TAG, "Generating folder list PDF for '$folderName' with ${expensesWithImages.size} expenses")
+                expensesWithImages.forEachIndexed { index, expense ->
+                    Log.d(TAG, "Folder List PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
+                }
+                
+                val context = getApplication<Application>()
+                
+                try {
+                    // Using PdfUtils companion object method
+                    val pdfFile = withContext(Dispatchers.IO) {
+                        PdfUtils.generateFolderListPdf(context, allExpenses, folderName)
+                    }
+                    
+                    if (pdfFile != null && pdfFile.exists() && pdfFile.length() > 0) {
+                        val end = System.currentTimeMillis()
+                        val elapsedSeconds = (end - start) / 1000
+                        
+                        Log.d(TAG, "List PDF Export Success: ${pdfFile.absolutePath}")
+                        Log.d(TAG, "List PDF file exists: ${pdfFile.exists()}, size: ${pdfFile.length()} bytes")
+                        Log.d(TAG, "PDF generation completed in $elapsedSeconds seconds")
+                        
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = null,
+                            successMessage = "List PDF generated successfully in $elapsedSeconds seconds"
+                        )
+                        onComplete(pdfFile)
+                    } else {
+                        Log.e(TAG, "List PDF Export Failed: File was null or empty")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = "Failed to export list PDF: Empty file created"
+                        )
+                        onComplete(null)
+                    }
+                } catch (e: OutOfMemoryError) {
+                    Log.e(TAG, "Out of memory error during PDF generation", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Not enough memory to generate PDF. Try reducing image quality in Settings."
+                    )
+                    onComplete(null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in list PDF generation process", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "List PDF generation error: ${e.message}"
+                    )
+                    onComplete(null)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating list PDF for folder: $folderName", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    processingMessage = null,
+                    errorMessage = "Failed to generate list PDF: ${e.message}"
+                )
+                onComplete(null)
+            }
+        }
+    }
+    
+    /**
+     * Rotate the image of an expense
+     */
+    fun rotateExpenseImage(expenseId: String, degrees: Float) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+                
+                // Get the expense
+                val expense = repository.getExpenseById(expenseId)
+                if (expense == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Expense not found"
+                    )
+                    return@launch
+                }
+                
+                // Check if expense has an image
+                val imagePath = expense.imagePath
+                if (imagePath == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "No image to rotate"
+                    )
+                    return@launch
+                }
+                
+                Log.d(TAG, "Rotating image for expense $expenseId by $degrees degrees")
+                
+                // Get settings manager for compression quality
+                val settingsManager = SettingsManager.getInstance(getApplication())
+                val compressionQuality = settingsManager.imageCompression
+                
+                // Rotate the image
+                val rotatedImageUri = FileUtils.rotateImage(
+                    getApplication(),
+                    imagePath,
+                    degrees,
+                    compressionQuality
+                )
+                
+                if (rotatedImageUri == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Failed to rotate image"
+                    )
+                    return@launch
+                }
+                
+                // Clear the image cache for the URI to force reload
+                AppImageLoader.clearCacheForUri(getApplication(), rotatedImageUri)
+                
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = null
+                )
+                
+                // Force refresh of expense lists to show the rotated image
+                refreshExpenseLists()
+                
+                Log.d(TAG, "Successfully rotated image for expense $expenseId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rotating expense image", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to rotate image: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * Generate ZIP export with PDF, CSV, and Grid for all expenses or a specific folder
+     * @param folderName Folder name or "All" for all expenses
+     * @param onComplete Callback with the generated ZIP file or null if generation failed
+     */
+    fun generateZipExport(folderName: String, onComplete: (File?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val start = System.currentTimeMillis()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    processingMessage = "Preparing ZIP export for folder: $folderName"
+                )
+                
+                Log.d(TAG, "Starting ZIP export for folder: $folderName")
+                val allExpenses = repository.getAllExpenses()
+                
+                if (allExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses to generate ZIP - expenses list is empty")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses to generate ZIP export"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                Log.d(TAG, "Found ${allExpenses.size} total expenses")
+                // For "All" folder, include all expenses, otherwise filter by folderName
+                val folderExpenses = if (folderName == "All") {
+                    Log.d(TAG, "Using all expenses for 'All' folder")
+                    allExpenses
+                } else {
+                    val filteredExpenses = allExpenses.filter { it.folderName == folderName }
+                    Log.d(TAG, "Found ${filteredExpenses.size} expenses in folder: $folderName")
+                    filteredExpenses
+                }
+                
+                if (folderExpenses.isEmpty()) {
+                    Log.e(TAG, "No expenses found for specified folder")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "No expenses found in folder"
+                    )
+                    onComplete(null)
+                    return@launch
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    processingMessage = "Generating ZIP with PDF, CSV, and Grid exports for folder: $folderName"
+                )
+                
+                val context = getApplication<Application>()
+                
+                try {
+                    // Using ZipUtils to generate the ZIP file with all export types
+                    val zipUri = withContext(Dispatchers.IO) {
+                        ZipUtils.generateZipExport(context, folderExpenses, folderName)
+                    }
+                    
+                    // Get the file from URI
+                    val zipFile = FileUtils.getFileFromUri(context, zipUri)
+                    
+                    if (zipFile != null && zipFile.exists() && zipFile.length() > 0) {
+                        val end = System.currentTimeMillis()
+                        val elapsedSeconds = (end - start) / 1000
+                        
+                        Log.d(TAG, "ZIP Export Success: ${zipFile.absolutePath}")
+                        Log.d(TAG, "ZIP file exists: ${zipFile.exists()}, size: ${zipFile.length()} bytes")
+                        Log.d(TAG, "ZIP generation completed in $elapsedSeconds seconds")
+                        
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = null,
+                            successMessage = "ZIP export generated successfully in $elapsedSeconds seconds"
+                        )
+                        onComplete(zipFile)
+                    } else {
+                        Log.e(TAG, "ZIP Export Failed: File was null or empty")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            processingMessage = null,
+                            errorMessage = "Failed to generate ZIP export: Empty file created"
+                        )
+                        onComplete(null)
+                    }
+                } catch (e: OutOfMemoryError) {
+                    Log.e(TAG, "Out of memory error during ZIP generation", e)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "Not enough memory to generate ZIP. Try reducing image quality in Settings."
+                    )
+                    onComplete(null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in ZIP generation process", e)
+                    e.printStackTrace()
+                    
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        processingMessage = null,
+                        errorMessage = "ZIP generation error: ${e.message}"
+                    )
+                    onComplete(null)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating ZIP for folder: $folderName", e)
+                
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    processingMessage = null,
+                    errorMessage = "Failed to generate ZIP: ${e.message}"
+                )
+                onComplete(null)
+            }
+        }
+    }
+    
     companion object {
         private const val TAG = "ExpenseViewModel"
     }
@@ -1072,5 +1983,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
  */
 data class ExpenseUiState(
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val processingMessage: String? = null,
+    val successMessage: String? = null
 ) 

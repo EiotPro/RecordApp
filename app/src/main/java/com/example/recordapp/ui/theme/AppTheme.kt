@@ -36,16 +36,17 @@ fun AppTheme(content: @Composable () -> Unit) {
             val window = (context as Activity).window
             val insetsController = WindowCompat.getInsetsController(window, view)
             
-            // Set system bars appearance
+            // Set system bars appearance based on theme
             insetsController.isAppearanceLightStatusBars = !darkTheme
             insetsController.isAppearanceLightNavigationBars = !darkTheme
             
-            // Make the system bars transparent
-            window.statusBarColor = androidx.compose.ui.graphics.Color.Transparent.toArgb()
-            window.navigationBarColor = androidx.compose.ui.graphics.Color.Transparent.toArgb()
-            
-            // Enable edge-to-edge experience
+            // Enable edge-to-edge experience with transparent system bars
             WindowCompat.setDecorFitsSystemWindows(window, false)
+            
+            // Set transparent colors for the system bars
+            // This is done by setting the background color of the entire window
+            val transparentColor = androidx.compose.ui.graphics.Color.Transparent.toArgb()
+            window.decorView.setBackgroundColor(transparentColor)
             
             onDispose {}
         }

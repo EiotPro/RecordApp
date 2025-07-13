@@ -3,4 +3,7 @@ plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    id("com.autonomousapps.dependency-analysis") version "1.25.0"
+    id("com.google.dagger.hilt.android") version "2.50" apply false
 }

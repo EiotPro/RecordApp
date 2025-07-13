@@ -24,6 +24,9 @@
     <cache-path
         name="shared_images"
         path="images/" />
+    <cache-path
+        name="ucrop_cache"
+        path="." />
     
     <!-- Internal files -->
     <files-path

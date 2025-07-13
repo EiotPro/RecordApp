@@ -55,24 +55,24 @@ interface ExpenseDao {
     /**
      * Get all expenses as Flow
      */
-    @Query("SELECT * FROM expenses ORDER BY timestampString DESC")
+    @Query("SELECT * FROM expenses ORDER BY displayOrder ASC, timestampString DESC")
     fun getAllExpenses(): Flow<List<ExpenseEntity>>
     
     /**
      * Get all expenses as a list (not a Flow)
      */
-    @Query("SELECT * FROM expenses ORDER BY timestampString DESC")
+    @Query("SELECT * FROM expenses ORDER BY displayOrder ASC, timestampString DESC")
     suspend fun getAllExpensesAsList(): List<ExpenseEntity>
     
     /**
      * Get paged expenses
      */
-    @Query("SELECT * FROM expenses ORDER BY timestampString DESC")
+    @Query("SELECT * FROM expenses ORDER BY displayOrder ASC, timestampString DESC")
     fun getPagedExpenses(): PagingSource<Int, ExpenseEntity>
     
     /**
      * Get expenses by folder name
      */
-    @Query("SELECT * FROM expenses WHERE folderName = :folderName ORDER BY timestampString DESC")
+    @Query("SELECT * FROM expenses WHERE folderName = :folderName ORDER BY displayOrder ASC, timestampString DESC")
     fun getExpensesByFolder(folderName: String): Flow<List<ExpenseEntity>>
 } 

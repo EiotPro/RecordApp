@@ -1,9 +1,13 @@
 package com.example.recordapp.ui.screens
 
 import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,11 +19,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.recordapp.R
 import com.example.recordapp.model.Expense
+import com.example.recordapp.ui.components.FullScreenImageViewer
+import com.example.recordapp.util.AppImageLoader
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.launch
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +39,7 @@ fun ExpenseDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val expense by viewModel.getExpenseById(expenseId).collectAsState(initial = null)
+    val uiState by viewModel.uiState.collectAsState()
     
     Scaffold(
         topBar = {
@@ -97,19 +106,43 @@ fun ExpenseDetailScreen(
                 .padding(paddingValues)
         ) {
             expense?.let { exp ->
-                ExpenseDetails(expense = exp)
+                ExpenseDetails(expense = exp, viewModel = viewModel)
             } ?: run {
                 // Show loading or not found message
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
+            
+            // Show loading indicator if needed
+            if (uiState.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+            
+            // Show error message if any
+            if (!uiState.errorMessage.isNullOrBlank()) {
+                Snackbar(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                ) {
+                    Text(uiState.errorMessage.orEmpty())
+                }
+            }
         }
     }
 }
 
 @Composable
-fun ExpenseDetails(expense: Expense) {
+fun ExpenseDetails(expense: Expense, viewModel: ExpenseViewModel) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // State for full screen viewing
+    var showFullScreenViewer by remember { mutableStateOf(false) }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -174,16 +207,81 @@ fun ExpenseDetails(expense: Expense) {
         
         // Image
         if (expense.imagePath != null) {
-            Card(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 300.dp)
             ) {
-                AsyncImage(
-                    model = expense.imagePath,
-                    contentDescription = "Expense image",
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.Fit
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .clickable { showFullScreenViewer = true }
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(expense.imagePath)
+                            .memoryCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .diskCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .build(),
+                        contentDescription = "Expense image",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                
+                // Image Rotation Controls
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Rotate Left Button
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                viewModel.rotateExpenseImage(expense.id, -90f)
+                            }
+                        },
+                        modifier = Modifier.size(48.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.RotateLeft,
+                            contentDescription = "Rotate Left",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(64.dp))
+                    
+                    // Rotate Right Button
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                viewModel.rotateExpenseImage(expense.id, 90f)
+                            }
+                        },
+                        modifier = Modifier.size(48.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.RotateRight,
+                            contentDescription = "Rotate Right",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+            
+            // Show full screen viewer when requested
+            if (showFullScreenViewer) {
+                FullScreenImageViewer(
+                    uri = expense.imagePath!!,
+                    onDismiss = { showFullScreenViewer = false }
                 )
             }
         }
