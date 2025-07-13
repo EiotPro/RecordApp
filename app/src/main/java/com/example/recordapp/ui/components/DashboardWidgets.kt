@@ -1,14 +1,11 @@
 package com.example.recordapp.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,87 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.recordapp.model.Expense
 import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.launch
-
-// Define FlashOn icon since it's not available in the standard Icons.Default set
-private val FlashOn = Icons.Default.Bolt // Using Bolt as a replacement for FlashOn
-
-/**
- * Widget that displays a summary of expenses
- * This function is used elsewhere in the codebase
- */
-@Composable
-fun ExpenseSummaryWidget(
-    totalAmount: Double,
-    expenseCount: Int,
-    onViewAllClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isEditing: Boolean = false,
-    onRemove: () -> Unit = {},
-    onConfigure: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val settingsManager = SettingsManager.getInstance(context)
-    
-    DashboardWidget(
-        title = "Expense Summary",
-        icon = Icons.Default.BarChart,
-        modifier = modifier,
-        isEditing = isEditing,
-        onRemove = onRemove,
-        onConfigure = onConfigure
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-        ) {
-            // Total amount
-            Text(
-                text = "Total Expenses",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            Text(
-                text = settingsManager.formatAmount(totalAmount),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Expense count
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "$expenseCount ${if (expenseCount == 1) "Record" else "Records"}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                
-                TextButton(onClick = onViewAllClick) {
-                    Text("View All")
-                }
-            }
-        }
-    }
-}
 
 /**
  * Widget that displays recent transactions
@@ -184,52 +109,6 @@ fun RecentTransactionsWidget(
 }
 
 /**
- * Widget that displays quick action buttons
- */
-@Composable
-fun QuickActionsWidget(
-    onAddExpense: () -> Unit,
-    onExportPdf: () -> Unit,
-    onExportCsv: () -> Unit,
-    onScanReceipt: () -> Unit,
-    modifier: Modifier = Modifier,
-    isEditing: Boolean = false,
-    onRemove: () -> Unit = {},
-    onConfigure: () -> Unit = {}
-) {
-    DashboardWidget(
-        title = "Quick Actions",
-        icon = FlashOn,
-        modifier = modifier,
-        isEditing = isEditing,
-        onRemove = onRemove,
-        onConfigure = onConfigure
-    ) {
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
-        ) {
-            items(quickActions) { action ->
-                QuickActionButton(
-                    icon = action.icon,
-                    label = action.label,
-                    onClick = when (action.id) {
-                        "add" -> onAddExpense
-                        "pdf" -> onExportPdf
-                        "csv" -> onExportCsv
-                        "scan" -> onScanReceipt
-                        else -> {{}}
-                    }
-                )
-            }
-        }
-    }
-}
-
-/**
  * A single transaction item in the recent transactions widget
  */
 @Composable
@@ -239,7 +118,7 @@ private fun TransactionItem(
 ) {
     val context = LocalContext.current
     // This variable is used when getting the formatted amount
-    val settingsManager = SettingsManager.getInstance(context)
+    SettingsManager.getInstance(context)
     
     Surface(
         modifier = Modifier
@@ -306,68 +185,6 @@ private fun TransactionItem(
 }
 
 /**
- * A quick action button
- */
-@Composable
-private fun QuickActionButton(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(72.dp)
-    ) {
-        // Button
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .shadow(4.dp, CircleShape)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        // Label
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/**
- * Data class for quick action buttons
- */
-private data class QuickAction(
-    val id: String,
-    val icon: ImageVector,
-    val label: String
-)
-
-/**
- * List of quick actions
- */
-private val quickActions = listOf(
-    QuickAction("add", Icons.Default.Add, "Add"),
-    QuickAction("scan", Icons.Default.PhotoCamera, "Scan"),
-    QuickAction("pdf", Icons.Default.PictureAsPdf, "PDF"),
-    QuickAction("csv", Icons.Default.TableView, "CSV")
-)
-
-/**
  * Bottom sheet for adding a new expense
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -381,7 +198,7 @@ fun AddExpenseBottomSheet(
     var amount by remember { mutableStateOf("") }
     val context = LocalContext.current
     // This variable is used below
-    val settingsManager = SettingsManager.getInstance(context)
+    SettingsManager.getInstance(context)
     
     // Folder selection
     val availableFolders by viewModel.availableFolders.collectAsState(initial = emptyList())
