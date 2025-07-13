@@ -1,11 +1,8 @@
 package com.example.recordapp.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,33 +14,28 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.example.recordapp.model.Expense
 import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.viewmodel.ExpenseViewModel
-import java.text.NumberFormat
-import java.util.*
 import kotlinx.coroutines.launch
 
 /**
  * Widget that displays a summary of expenses
+ * This function is used elsewhere in the codebase
  */
 @Composable
 fun ExpenseSummaryWidget(
@@ -188,52 +180,6 @@ fun RecentTransactionsWidget(
 }
 
 /**
- * Widget that displays quick action buttons
- */
-@Composable
-fun QuickActionsWidget(
-    onAddExpense: () -> Unit,
-    onExportPdf: () -> Unit,
-    onExportCsv: () -> Unit,
-    onScanReceipt: () -> Unit,
-    modifier: Modifier = Modifier,
-    isEditing: Boolean = false,
-    onRemove: () -> Unit = {},
-    onConfigure: () -> Unit = {}
-) {
-    DashboardWidget(
-        title = "Quick Actions",
-        icon = Icons.Default.FlashOn,
-        modifier = modifier,
-        isEditing = isEditing,
-        onRemove = onRemove,
-        onConfigure = onConfigure
-    ) {
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
-        ) {
-            items(quickActions) { action ->
-                QuickActionButton(
-                    icon = action.icon,
-                    label = action.label,
-                    onClick = when (action.id) {
-                        "add" -> onAddExpense
-                        "pdf" -> onExportPdf
-                        "csv" -> onExportCsv
-                        "scan" -> onScanReceipt
-                        else -> {{}}
-                    }
-                )
-            }
-        }
-    }
-}
-
-/**
  * A single transaction item in the recent transactions widget
  */
 @Composable
@@ -242,6 +188,7 @@ private fun TransactionItem(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
+    // This variable is used when getting the formatted amount
     val settingsManager = SettingsManager.getInstance(context)
     
     Surface(
@@ -383,6 +330,7 @@ fun AddExpenseBottomSheet(
     var description by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     val context = LocalContext.current
+    // This variable is used below
     val settingsManager = SettingsManager.getInstance(context)
     
     // Folder selection
@@ -504,7 +452,7 @@ fun AddExpenseBottomSheet(
 }
 
 /**
- * Bottom sheet for configuring settings
+ * Bottom sheet for settings
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -530,9 +478,6 @@ fun SettingsBottomSheet(
     var newFolderName by remember { mutableStateOf("") }
     var targetMoveFolder by remember { mutableStateOf("default") }
     var shouldDeleteContents by remember { mutableStateOf(false) }
-    
-    // Error state
-    val uiState by viewModel.uiState.collectAsState()
     
     // Create a list of all folders with "default" always being first
     val allFolders = remember(availableFolders) {
@@ -882,7 +827,7 @@ fun SettingsBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
             
             // Image Compression Section
-            var imageCompression by remember { mutableStateOf(settingsManager.imageCompression.toFloat()) }
+            var imageCompression by remember { mutableFloatStateOf(settingsManager.imageCompression.toFloat()) }
             
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
