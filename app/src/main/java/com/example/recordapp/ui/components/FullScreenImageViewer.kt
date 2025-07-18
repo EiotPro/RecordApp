@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
 
 /**
  * Full screen image viewer with zoom, rotate, and pan capabilities
@@ -66,7 +68,12 @@ fun FullScreenImageViewer(
             ) {
                 // Image with gesture detection
                 AsyncImage(
-                    model = uri,
+                    model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(uri)
+                        .crossfade(true)
+                        .diskCachePolicy(CachePolicy.DISABLED) // Disable disk cache to ensure fresh image
+                        .memoryCachePolicy(CachePolicy.DISABLED) // Disable memory cache to ensure fresh image
+                        .build(),
                     contentDescription = "Fullscreen Image",
                     modifier = Modifier
                         .fillMaxSize()

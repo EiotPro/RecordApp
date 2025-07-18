@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.*
@@ -47,10 +48,20 @@ import coil.compose.AsyncImage
 import com.example.recordapp.R
 import com.example.recordapp.util.OcrResult
 import com.example.recordapp.util.FileUtils
-import com.example.recordapp.util.ImageCropperHelper
 import com.example.recordapp.util.SettingsManager
-import com.example.recordapp.util.UCropWrapper
+import com.example.recordapp.util.UcropHelper
 import java.io.File
+import android.widget.Toast
+import kotlinx.coroutines.launch
+import android.content.Intent
+import coil.request.ImageRequest
+import coil.request.CachePolicy
+import androidx.core.content.FileProvider
+import android.os.Build
+import android.os.Bundle
+import com.yalantis.ucrop.UCrop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +75,7 @@ fun ImageCaptureDialog(
 ) {
     val context = LocalContext.current
     val settingsManager = SettingsManager.getInstance(context)
+    val scope = rememberCoroutineScope()
     var serialNumber by remember { mutableStateOf(ocrResult?.serialNumber ?: "") }
     var amount by remember { mutableStateOf(if (ocrResult?.amount ?: 0.0 > 0) ocrResult?.amount.toString() else "") }
     var description by remember { mutableStateOf(ocrResult?.description ?: "") }
@@ -77,8 +89,8 @@ fun ImageCaptureDialog(
     // State for full screen viewing
     var showFullScreenViewer by remember { mutableStateOf(false) }
     
-    // State for showing edit menu
-    var showEditOptions by remember { mutableStateOf(false) }
+    // Error state
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     
     // Receipt type for displaying appropriate icon and label - keep for backend functionality
     val receiptType = remember(ocrResult?.receiptType) {
@@ -96,11 +108,7 @@ fun ImageCaptureDialog(
         }
     }
     
-    // Create a destination URI for cropped image using helper
-    val destinationUri = remember {
-        ImageCropperHelper.createCropDestinationUri(context)
-    }
-    
+    // Update the crop launcher implementation
     // Launcher for image cropping
     val cropLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -109,70 +117,119 @@ fun ImageCaptureDialog(
             try {
                 val resultData = result.data
                 if (resultData != null) {
-                    val resultUri = UCropWrapper.getOutput(resultData)
+                    // Log any extras for debugging
+                    resultData.extras?.let { bundle ->
+                        bundle.keySet().forEach { key ->
+                            Log.d("ImageCaptureDialog", "Result extras - $key: ${bundle.get(key)}")
+                        }
+                    }
+                    
+                    // Get the output URI directly from UCrop
+                    val resultUri = UCrop.getOutput(resultData)
+                    
                     if (resultUri != null) {
-                        // Save the cropped image to the folder
-                        val savedUri = ImageCropperHelper.saveCroppedImage(context, resultUri, folderName)
+                        Log.d("ImageCaptureDialog", "Successfully received cropped image URI: $resultUri")
                         
-                        // Update image URI to the saved version
-                        if (savedUri != null) {
-                            currentImageUri = savedUri
-                            Log.d("ImageCaptureDialog", "Image cropped and saved successfully: $savedUri")
-                            
-                            // Since cropped image might have changed dimensions, reset rotation
-                            imageRotation = 0f
-                        } else {
-                            // If saving failed, still show the cropped image from cache
+                        // Check if the URI is accessible
+                        if (UcropHelper.isUriAccessible(context, resultUri)) {
+                            // Update the UI immediately with the cropped image
                             currentImageUri = resultUri
-                            Log.e("ImageCaptureDialog", "Failed to save cropped image to folder, using temporary URI")
+                            
+                            // Clear any previous error
+                            errorMessage = null
+                            
+                            // Save the cropped image to the folder in the background
+                            scope.launch {
+                                try {
+                                    // Show a toast to indicate saving
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Saving cropped image...", Toast.LENGTH_SHORT).show()
+                                    }
+                                    
+                                    val savedUri = UcropHelper.saveCroppedImage(context, resultUri, folderName)
+                                    
+                                    // Update image URI to the saved version if successful
+                                    if (savedUri != null) {
+                                        withContext(Dispatchers.Main) {
+                                            currentImageUri = savedUri
+                                            // Since cropped image might have changed dimensions, reset rotation
+                                            imageRotation = 0f
+                                            
+                                            // Show a confirmation toast
+                                            Toast.makeText(context, "Image cropped successfully", Toast.LENGTH_SHORT).show()
+                                            
+                                            // Clear any error messages
+                                            errorMessage = null
+                                        }
+                                        
+                                        Log.d("ImageCaptureDialog", "Image cropped and saved successfully: $savedUri")
+                                    } else {
+                                        // If saving failed, still use the temporary URI but log the error
+                                        Log.e("ImageCaptureDialog", "Failed to save cropped image to folder, using temporary URI")
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Image cropped but couldn't be saved permanently", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("ImageCaptureDialog", "Exception when saving cropped image: ${e.message}", e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error saving cropped image: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        errorMessage = "Error saving cropped image: ${e.message}"
+                                    }
+                                }
+                            }
+                        } else {
+                            Log.e("ImageCaptureDialog", "Cropped image URI is not accessible: $resultUri")
+                            errorMessage = "Cannot access cropped image. Please try again."
+                            Toast.makeText(context, "Cannot access cropped image", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         Log.e("ImageCaptureDialog", "Failed to get cropped image result - output is null")
+                        Toast.makeText(context, "Failed to crop image - no result returned", Toast.LENGTH_SHORT).show()
+                        errorMessage = "Failed to get cropped image result - output is null"
                     }
                 } else {
                     Log.e("ImageCaptureDialog", "Failed to get cropped image result - data is null")
+                    Toast.makeText(context, "Failed to crop image - no data returned", Toast.LENGTH_SHORT).show()
+                    errorMessage = "Failed to get cropped image result - data is null"
                 }
             } catch (e: Exception) {
                 Log.e("ImageCaptureDialog", "Error processing cropped image: ${e.message}", e)
+                Toast.makeText(context, "Error processing cropped image", Toast.LENGTH_SHORT).show()
+                errorMessage = "Error processing cropped image: ${e.message}"
             }
-        } else if (result.resultCode == UCropWrapper.RESULT_ERROR) {
+        } else if (result.resultCode == UCrop.RESULT_ERROR) {
             try {
                 val data = result.data
                 if (data != null) {
-                    val error = UCropWrapper.getError(data)
+                    val error = UcropHelper.getError(data)
                     Log.e("ImageCaptureDialog", "Image cropping error: ${error?.message}")
+                    
+                    // Log any extras for debugging
+                    data.extras?.let { bundle ->
+                        bundle.keySet().forEach { key ->
+                            Log.d("ImageCaptureDialog", "Error extras - $key: ${bundle.get(key)}")
+                        }
+                    }
+                    
+                    Toast.makeText(context, "Crop error: ${error?.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+                    errorMessage = "Image cropping error: ${error?.message}"
                 } else {
                     Log.e("ImageCaptureDialog", "Image cropping error: Unknown (data is null)")
+                    Toast.makeText(context, "Unknown error during cropping", Toast.LENGTH_SHORT).show()
+                    errorMessage = "Image cropping error: Unknown (data is null)"
                 }
             } catch (e: Exception) {
                 Log.e("ImageCaptureDialog", "Error getting crop error details: ${e.message}", e)
+                Toast.makeText(context, "Error processing crop result", Toast.LENGTH_SHORT).show()
+                errorMessage = "Error getting crop error details: ${e.message}"
             }
+        } else if (result.resultCode == Activity.RESULT_CANCELED) {
+            Log.d("ImageCaptureDialog", "Image cropping canceled by user")
+            // User canceled, no need for a toast
         } else {
-            Log.d("ImageCaptureDialog", "Image cropping canceled or unknown result code: ${result.resultCode}")
-        }
-    }
-    
-    // Function to start image cropping
-    val startCropActivity = { uri: Uri? ->
-        if (uri != null) {
-            try {
-                // Get options using helper class
-                val options = ImageCropperHelper.getDefaultCropOptions(settingsManager.imageCompression)
-                
-                // Launch UCrop with the configured options
-                val cropIntent = UCropWrapper.of(uri, destinationUri)
-                    .withOptions(options)
-                    .getIntent(context)
-                    
-                cropLauncher.launch(cropIntent)
-                showEditOptions = false
-                
-                Log.d("ImageCaptureDialog", "Launched crop activity with source URI: $uri and destination URI: $destinationUri")
-            } catch (e: Exception) {
-                Log.e("ImageCaptureDialog", "Failed to launch crop activity: ${e.message}", e)
-            }
-        } else {
-            Log.e("ImageCaptureDialog", "Cannot crop null image URI")
+            Log.d("ImageCaptureDialog", "Image cropping returned unknown result code: ${result.resultCode}")
+            Toast.makeText(context, "Unknown result from cropping", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -220,23 +277,73 @@ fun ImageCaptureDialog(
                         }
                     },
                     actions = {
-                        // Edit image button
-                        IconButton(onClick = { showEditOptions = !showEditOptions }) {
+                        // Crop image button
+                        IconButton(onClick = {
+                            val uri = currentImageUri
+                            if (uri != null) {
+                                try {
+                                    // Clear any previous error
+                                    errorMessage = null
+                                    
+                                    // Show a toast to indicate loading
+                                    Toast.makeText(context, "Preparing image for cropping...", Toast.LENGTH_SHORT).show()
+                                    
+                                    // Log detailed information about the image URI
+                                    try {
+                                        val scheme = uri.scheme
+                                        val authority = uri.authority
+                                        val path = uri.path
+                                        Log.d("ImageCaptureDialog", "Source image details - scheme: $scheme, authority: $authority, path: $path")
+                                    } catch (e: Exception) {
+                                        Log.e("ImageCaptureDialog", "Error logging URI details: ${e.message}")
+                                    }
+                                    
+                                    // Check URI accessibility
+                                    if (UcropHelper.isUriAccessible(context, uri)) {
+                                        try {
+                                            // Create crop intent and launch
+                                            val cropIntent = UcropHelper.startCrop(context, uri)
+                                            cropLauncher.launch(cropIntent)
+                                        } catch (e: Exception) {
+                                            Log.e("ImageCaptureDialog", "Error creating crop intent: ${e.message}", e)
+                                            Toast.makeText(context, "Error starting crop: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            errorMessage = "Error launching crop: ${e.message}"
+                                        }
+                                    } else {
+                                        Log.e("ImageCaptureDialog", "Cannot access image URI: $uri")
+                                        Toast.makeText(context, "Cannot access the image", Toast.LENGTH_SHORT).show()
+                                        errorMessage = "Cannot access image URI: $uri"
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("ImageCaptureDialog", "Error launching crop: ${e.message}", e)
+                                    Toast.makeText(context, "Error starting crop: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    errorMessage = "Error launching crop: ${e.message}"
+                                }
+                            } else {
+                                Toast.makeText(context, "No image available to crop", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
                             Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit Image"
+                                imageVector = Icons.Default.Crop,
+                                contentDescription = "Crop Image"
                             )
                         }
                         
-                        // Hidden Scan button - removed as per requirement
-                        // We're keeping the OCR functionality but not showing the button in UI
-                        
+                        // Save button
                         IconButton(
                             onClick = { 
                                 val amountValue = try { amount.toDouble() } catch (e: Exception) { 0.0 }
+                                
+                                // Check if we have a valid image URI
+                                if (currentImageUri == null) {
+                                    Toast.makeText(context, "No image available to save", Toast.LENGTH_SHORT).show()
+                                    return@IconButton
+                                }
+                                
                                 // Use currentImageUri which might contain the cropped image
-                                onSave(serialNumber, description, amountValue) 
-                                Log.d("ImageCaptureDialog", "Saving expense to folder: $folderName")
+                                onSave(serialNumber, description, amountValue)
+                                Log.d("ImageCaptureDialog", "Saving expense to folder: $folderName with image: $currentImageUri")
+                                Toast.makeText(context, "Expense saved successfully", Toast.LENGTH_SHORT).show()
                             }
                         ) {
                             Icon(
@@ -259,23 +366,97 @@ fun ImageCaptureDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
+                // Display error message if any
+                errorMessage?.let {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { errorMessage = null }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+                
                 // Enhanced image preview - taller and with rotation controls
                 if (currentImageUri != null) {
+                    // Track image loading state
+                    var isImageError by remember { mutableStateOf(false) }
+                    
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(360.dp) // Increased height for better viewing
                             .clip(RoundedCornerShape(12.dp))
                     ) {
-                        AsyncImage(
-                            model = currentImageUri,
-                            contentDescription = "Captured image",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { showFullScreenViewer = true }
-                                .graphicsLayer(rotationZ = imageRotation),
-                            contentScale = ContentScale.Fit // Changed to Fit to show the entire image
-                        )
+                        if (isImageError) {
+                            // Display error state
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.errorContainer),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BrokenImage,
+                                    contentDescription = "Error loading image",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    text = "Failed to load image",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        } else {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(currentImageUri)
+                                    .crossfade(true)
+                                    .diskCachePolicy(CachePolicy.DISABLED) // Disable disk cache to ensure fresh image
+                                    .memoryCachePolicy(CachePolicy.DISABLED) // Disable memory cache to ensure fresh image
+                                    .build(),
+                                contentDescription = "Captured image",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { showFullScreenViewer = true }
+                                    .graphicsLayer(rotationZ = imageRotation),
+                                contentScale = ContentScale.Fit, // Changed to Fit to show the entire image
+                                onError = { 
+                                    isImageError = true
+                                    Log.e("ImageCaptureDialog", "Failed to load image: ${currentImageUri}")
+                                }
+                            )
+                        }
                         
                         // Restore folder badge overlay
                         Surface(
@@ -339,35 +520,6 @@ fun ImageCaptureDialog(
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
-                            }
-                        }
-                        
-                        // Image rotation controls at the bottom - Removed as per requirement to only keep crop
-                    }
-                    
-                    // Image editing options dropdown - Modified to only show crop option
-                    if (showEditOptions) {
-                        Surface(
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shadowElevation = 4.dp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            ) {
-                                // Only Crop option - keeping just this option
-                                EditOption(
-                                    title = "Crop Image",
-                                    icon = Icons.Default.Crop,
-                                    onClick = {
-                                        // Launch crop activity
-                                        val uri = currentImageUri // Store in a local val to prevent smart cast issues
-                                        startCropActivity(uri)
-                                    }
-                                )
                             }
                         }
                     }
@@ -493,33 +645,5 @@ fun ImageCaptureDialog(
                 onDismiss = { showFullScreenViewer = false }
             )
         }
-    }
-}
-
-@Composable
-private fun EditOption(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = MaterialTheme.colorScheme.primary
-        )
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge
-        )
     }
 } 

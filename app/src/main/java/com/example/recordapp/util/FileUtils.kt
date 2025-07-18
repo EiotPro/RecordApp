@@ -203,7 +203,7 @@ object FileUtils {
     }
 
     /**
-     * Save image from URI to a specific folder with compression
+     * Save an image to a specific folder
      */
     fun saveImageToFolder(context: Context, sourceUri: Uri, folderName: String, quality: Int? = null): Uri? {
         return try {
@@ -240,10 +240,10 @@ object FileUtils {
                 Log.d(TAG, "Generated URI: ${destinationFile.second}")
                 
                 // Return a content URI for the saved file
-                destinationFile.second
+                return destinationFile.second
             } else {
                 Log.e(TAG, "Failed to save bitmap to file")
-                null
+                return null
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error saving image to folder: ${e.message}", e)

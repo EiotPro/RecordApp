@@ -31,10 +31,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.RecordApp"
-        android:largeHeap="false"
+        android:largeHeap="true"
         android:hardwareAccelerated="true"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
+        android:preserveLegacyExternalStorage="true"
         tools:targetApi="31">
         
         <activity
@@ -59,11 +60,15 @@
             </intent-filter>
         </activity>
         
-        <!-- UCrop Activity -->
+        <!-- UCrop Activity - Updated configuration -->
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:exported="false"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:windowSoftInputMode="adjustResize"
+            android:hardwareAccelerated="true"/>
 
         <!-- FileProvider for sharing files and images -->
         <provider
