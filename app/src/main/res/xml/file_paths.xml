@@ -2,44 +2,44 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Cache directories for cropping - CRITICAL -->
     <external-cache-path
-        name="external_crop_cache"
+        name="crop_cache_dir"
         path="crop_cache/" />
     <external-cache-path
-        name="external_crop_root"
+        name="crop_cache_root"
         path="crop_cache" />
     <cache-path
-        name="internal_crop_cache"
+        name="internal_crop_cache_dir"
         path="crop_cache/" />
     <cache-path
-        name="internal_crop_root"
+        name="internal_crop_cache_root"
         path="crop_cache" />
     <external-cache-path
-        name="external_source_images"
+        name="source_images_dir"
         path="source_images/" />
     <external-cache-path
-        name="external_source_root"
+        name="source_images_root"
         path="source_images" />
     <cache-path
-        name="internal_source_images"
+        name="internal_source_cache_dir"
         path="source_images/" />
     <cache-path
-        name="internal_source_root"
+        name="internal_source_cache_root"
         path="source_images" />
-    
+
     <!-- New internal files crop directory - CRITICAL -->
     <files-path
-        name="internal_crop_images"
+        name="crop_images_dir"
         path="crop_images/" />
     <files-path
-        name="internal_crop_root"
+        name="crop_images_root"
         path="crop_images" />
-        
+
     <!-- New internal source images directory - CRITICAL -->
     <files-path
-        name="internal_source_images_dir"
+        name="source_files_dir"
         path="source_images/" />
     <files-path
-        name="internal_source_root"
+        name="source_files_root"
         path="source_images" />
     
     <!-- Primary path for cropped images - root cache directory -->

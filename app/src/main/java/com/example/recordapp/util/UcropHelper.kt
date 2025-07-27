@@ -54,11 +54,11 @@ object UcropHelper {
     
     /**
      * Create a destination URI for the cropped image using external cache directory
+     * FIXED: Use a more robust approach that avoids UCrop's content URI resolution issues
      */
     private fun createDestinationUri(context: Context): Uri {
         try {
-            // IMPORTANT: Use externalCacheDir which is world-readable by the UCrop library
-            // Internal files dir won't work because the UCrop library cannot access it directly
+            // Try external cache first (most compatible with UCrop)
             val cachePath = context.externalCacheDir
             if (cachePath == null) {
                 Log.e(TAG, "External cache directory is null, falling back to internal cache")
@@ -79,7 +79,7 @@ object UcropHelper {
             }
             
             // Set read/write permissions for the directory
-            // SECURITY NOTE: We need to make this world-readable/writable because 
+            // SECURITY NOTE: We need to make this world-readable/writable because
             // UCrop library accesses these files directly by path
             // This is necessary to avoid ENOENT errors, but limited to cache directories only
             @Suppress("SetWorldReadable", "SetWorldWritable")
@@ -87,7 +87,8 @@ object UcropHelper {
                 cropDir.setReadable(true, false) // World readable
                 cropDir.setWritable(true, false) // World writable
             } catch (e: Exception) {
-                Log.e(TAG, "Error setting directory permissions: ${e.message}")
+                Log.w(TAG, "Could not set directory permissions (this may be normal on newer Android versions): ${e.message}")
+                // This is not fatal - UCrop may still work through content URIs
             }
             
             // Generate unique filename with timestamp and milliseconds
@@ -105,8 +106,13 @@ object UcropHelper {
                 // Set permissions on the file
                 // Required for UCrop library to access the file directly
                 @Suppress("SetWorldReadable", "SetWorldWritable")
-                destFile.setReadable(true, false)
-                destFile.setWritable(true, false)
+                try {
+                    destFile.setReadable(true, false)
+                    destFile.setWritable(true, false)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set file permissions (this may be normal on newer Android versions): ${e.message}")
+                    // This is not fatal - UCrop may still work through content URIs
+                }
                 
                 // Verify file creation
                 if (!created && !destFile.exists()) {
@@ -119,13 +125,12 @@ object UcropHelper {
             }
             
             Log.d(TAG, "Using destination file at: ${destFile.absolutePath}")
-            
-            // Convert to content URI via FileProvider
-            return FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                destFile
-            )
+
+            // CRITICAL FIX: Return file URI directly instead of content URI
+            // UCrop has issues with content URIs on some Android versions
+            // The error shows UCrop is trying to resolve content URIs to file paths
+            // and getting confused by FileProvider path names
+            return Uri.fromFile(destFile)
         } catch (e: Exception) {
             Log.e(TAG, "Error creating destination URI: ${e.message}", e)
             return createFallbackUri(context)
@@ -144,8 +149,13 @@ object UcropHelper {
             
             // Set permissions - required for UCrop to access the file
             @Suppress("SetWorldReadable", "SetWorldWritable")
-            tempFile.setReadable(true, false)
-            tempFile.setWritable(true, false)
+            try {
+                tempFile.setReadable(true, false)
+                tempFile.setWritable(true, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not set fallback file permissions (this may be normal on newer Android versions): ${e.message}")
+                // This is not fatal - UCrop may still work through content URIs
+            }
             
             // Verify file was created
             if (!tempFile.exists()) {
@@ -153,66 +163,16 @@ object UcropHelper {
             }
             
             Log.d(TAG, "Created fallback file at: ${tempFile.absolutePath}")
-            
-            return FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                tempFile
-            )
+
+            // CRITICAL FIX: Return file URI directly for UCrop compatibility
+            return Uri.fromFile(tempFile)
         } catch (fallbackException: Exception) {
             Log.e(TAG, "Fallback URI creation failed", fallbackException)
             throw IllegalStateException("Failed to create any valid destination URI", fallbackException)
         }
     }
     
-    /**
-     * Helper method to create a URI in the specified directory
-     * 
-     * @deprecated This method is no longer used as we've switched to a different approach
-     * but kept for reference in case we need to revert changes.
-     */
-    @Deprecated("No longer used with the new implementation")
-    private fun createUriInDirectory(context: Context, directory: File): Uri {
-        // Generate unique filename
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val fileName = "crop_${timestamp}_${System.currentTimeMillis()}.jpg"
-        
-        // Create the destination file
-        val destFile = File(directory, fileName)
-        
-        // Verify path exists and create empty file
-        if (!destFile.parentFile!!.exists()) {
-            destFile.parentFile!!.mkdirs()
-        }
-        
-        // Create empty file to ensure path exists
-        try {
-            val created = destFile.createNewFile()
-            Log.d(TAG, "Created destination file: $created at ${destFile.absolutePath}")
-            
-            // Verify file creation
-            if (!created && !destFile.exists()) {
-                throw IOException("Failed to create destination file")
-            }
-            
-            // Test file is writable
-            if (!destFile.canWrite()) {
-                Log.w(TAG, "Destination file is not writable: ${destFile.absolutePath}")
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to create destination file: ${e.message}")
-            throw e
-        }
-        
-        Log.d(TAG, "Created destination file at: ${destFile.absolutePath}")
-        
-        // Convert to content URI via FileProvider
-        return FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            destFile
-        )
-    }
+
     
     /**
      * Start a new UCrop operation with the given source URI
@@ -245,12 +205,18 @@ object UcropHelper {
             // Create the UCrop object with source and destination
             val uCrop = UCrop.of(localSourceUri, destinationUri)
                 .withOptions(getOptions())
-            
-            // Return the intent with permissions
+
+            // Log the final URIs being used
+            Log.d(TAG, "UCrop configured with:")
+            Log.d(TAG, "  Source URI: $localSourceUri (scheme: ${localSourceUri.scheme})")
+            Log.d(TAG, "  Destination URI: $destinationUri (scheme: ${destinationUri.scheme})")
+
+            // Return the intent with permissions (though file URIs don't need them)
             return uCrop.getIntent(context).apply {
+                // Note: File URIs don't need these permissions, but keeping for compatibility
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                
+
                 // Add extras to track file paths for debugging
                 putExtra("SOURCE_PATH", localSourceUri.toString())
                 putExtra("DEST_PATH", destinationUri.toString())
@@ -261,79 +227,7 @@ object UcropHelper {
         }
     }
     
-    /**
-     * Create a local copy of the source URI in the external cache directory
-     * This solves potential issues with content:// URIs
-     * 
-     * @deprecated This method is no longer used as we've switched to UcropFileUtils
-     * but kept for reference in case we need to revert changes.
-     */
-    @Deprecated("Replaced by UcropFileUtils.prepareImageForUCrop")
-    private fun copyUriToLocalCache(context: Context, sourceUri: Uri): Uri {
-        try {
-            // First check if URI is accessible
-            if (!isUriAccessible(context, sourceUri)) {
-                Log.e(TAG, "Source URI is not accessible: $sourceUri")
-                throw IOException("Source URI is not accessible")
-            }
-            
-            // Use external cache directory which is world-readable
-            val cachePath = context.externalCacheDir
-            if (cachePath == null) {
-                Log.e(TAG, "External cache directory is null, falling back to internal cache")
-                // Use internal cache directory as fallback
-                val fallbackDir = File(context.cacheDir, "source_images")
-                if (!fallbackDir.exists()) {
-                    fallbackDir.mkdirs()
-                }
-                
-                if (!fallbackDir.exists()) {
-                    throw IOException("Failed to create any directory for source images")
-                }
-                
-                return copyToDirectory(context, sourceUri, fallbackDir, true)
-            }
-            
-            // Create temporary file in external cache directory
-            val tempDir = File(cachePath, "source_images")
-            if (!tempDir.exists()) {
-                val created = tempDir.mkdirs()
-                Log.d(TAG, "Created source images directory in external cache: $created")
-                
-                // If directory creation failed, try internal cache directory as fallback
-                if (!created && !tempDir.exists()) {
-                    Log.e(TAG, "Failed to create source images directory in external cache")
-                    
-                    // Use internal cache directory as fallback
-                    val fallbackDir = File(context.cacheDir, "source_images")
-                    fallbackDir.mkdirs()
-                    
-                    if (!fallbackDir.exists()) {
-                        throw IOException("Failed to create any directory for source images")
-                    }
-                    
-                    return copyToDirectory(context, sourceUri, fallbackDir, true)
-                }
-            }
-            
-            // Set directory permissions - required for UCrop library access
-            // SECURITY NOTE: This is necessary for the UCrop library which accesses files directly
-            // The directory is in the app's cache, isolated from other apps
-            @Suppress("SetWorldReadable", "SetWorldWritable")
-            try {
-                tempDir.setReadable(true, false)
-                tempDir.setWritable(true, false)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting directory permissions: ${e.message}")
-            }
-            
-            return copyToDirectory(context, sourceUri, tempDir, false)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error copying URI to local cache: ${e.message}", e)
-            // Just return the original URI if copy fails
-            return sourceUri
-        }
-    }
+
     
     /**
      * Helper method to copy a URI to a specific directory

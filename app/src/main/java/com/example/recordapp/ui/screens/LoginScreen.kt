@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.recordapp.R
 import com.example.recordapp.ui.navigation.Screen
+import com.example.recordapp.ui.components.EnhancedSignInDialog
 import com.example.recordapp.viewmodel.AuthViewModel
 
 @Composable
@@ -48,8 +55,10 @@ fun LoginScreen(
     viewModel: AuthViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val signInHistory by viewModel.signInHistory.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    
+
+    var showEnhancedDialog by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     
@@ -115,44 +124,46 @@ fun LoginScreen(
                     )
                     
                     Spacer(modifier = Modifier.height(24.dp))
-                    
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text(stringResource(R.string.email)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next
+
+                    // Enhanced Sign-in Button
+                    Button(
+                        onClick = { showEnhancedDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.logo2),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
                         )
-                    )
-                    
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sign in with Supabase")
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(stringResource(R.string.password)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
-                        )
-                    )
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator()
-                    } else {
-                        Button(
-                            onClick = { viewModel.login(email.trim(), password) },
+
+                    // Quick sign-in with most recent account
+                    if (signInHistory.isNotEmpty()) {
+                        val mostRecent = signInHistory.first()
+                        OutlinedButton(
+                            onClick = {
+                                email = mostRecent.email
+                                showEnhancedDialog = true
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(stringResource(R.string.login))
+                            Icon(Icons.Default.Person, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Continue as ${mostRecent.userName.ifBlank { mostRecent.email }}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = mostRecent.email,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
                         }
                     }
                     
@@ -167,4 +178,22 @@ fun LoginScreen(
             }
         }
     }
-} 
+
+    // Enhanced Sign-in Dialog
+    if (showEnhancedDialog) {
+        EnhancedSignInDialog(
+            onDismiss = { showEnhancedDialog = false },
+            onSignIn = { emailInput, passwordInput ->
+                viewModel.login(emailInput, passwordInput)
+                showEnhancedDialog = false
+            },
+            onSignUp = {
+                showEnhancedDialog = false
+                navController.navigate(Screen.Signup.route)
+            },
+            signInHistory = signInHistory,
+            isLoading = uiState.isLoading,
+            errorMessage = uiState.errorMessage
+        )
+    }
+}

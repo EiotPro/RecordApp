@@ -6,6 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.recordapp.model.User
 import com.example.recordapp.network.SupabaseClient
+import com.example.recordapp.util.SignInHistoryManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.gotrue.user.UserInfo
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,8 @@ import javax.inject.Singleton
 @Singleton
 class AuthRepository @Inject constructor(
     @ApplicationContext private val applicationContext: Context,
-    private val supabaseClient: SupabaseClient
+    private val supabaseClient: SupabaseClient,
+    private val signInHistoryManager: SignInHistoryManager
 ) {
     
     private val TAG = "AuthRepository"
@@ -123,7 +125,10 @@ class AuthRepository @Inject constructor(
             
             // Update current user
             _currentUser.value = user
-            
+
+            // Save to sign-in history
+            signInHistoryManager.saveSignInRecord(user.email, user.name)
+
                     Result.success(user)
                 },
                 onFailure = { error ->
@@ -175,6 +180,21 @@ class AuthRepository @Inject constructor(
     suspend fun getCurrentUser(): User? = withContext(Dispatchers.IO) {
         return@withContext _currentUser.value
     }
+
+    /**
+     * Get sign-in history
+     */
+    suspend fun getSignInHistory() = signInHistoryManager.getSignInHistory()
+
+    /**
+     * Get most recent sign-in
+     */
+    suspend fun getMostRecentSignIn() = signInHistoryManager.getMostRecentSignIn()
+
+    /**
+     * Clear sign-in history
+     */
+    suspend fun clearSignInHistory() = signInHistoryManager.clearSignInHistory()
     
     companion object {
         @Volatile
@@ -184,7 +204,8 @@ class AuthRepository @Inject constructor(
             return instance ?: synchronized(this) {
                 instance ?: AuthRepository(
                     context,
-                    SupabaseClient.getInstance()
+                    SupabaseClient.getInstance(),
+                    SignInHistoryManager(context)
                 ).also { instance = it }
             }
         }

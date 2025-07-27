@@ -17,13 +17,15 @@ data class ExpenseEntity(
     @PrimaryKey
     val id: String,
     val imagePathString: String?,
-    val timestampString: String,
+    val timestampString: String, // Creation timestamp
+    val expenseDateTimeString: String = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), // Actual expense date/time
     val serialNumber: String = "",
     val amount: Double = 0.0,
     val description: String = "",
     val folderName: String = "default",
     val receiptType: String = "",
-    val displayOrder: Int = 0
+    val displayOrder: Int = 0,
+    val imageModifiedTimestamp: Long = System.currentTimeMillis() // Track when image was last modified
 ) {
     /**
      * Convert to domain model
@@ -33,12 +35,14 @@ data class ExpenseEntity(
             id = id,
             imagePath = imagePathString?.let { Uri.parse(it) },
             timestamp = LocalDateTime.parse(timestampString, TIMESTAMP_FORMATTER),
+            expenseDateTime = LocalDateTime.parse(expenseDateTimeString, TIMESTAMP_FORMATTER),
             serialNumber = serialNumber,
             amount = amount,
             description = description,
             folderName = folderName,
             receiptType = receiptType,
-            displayOrder = displayOrder
+            displayOrder = displayOrder,
+            imageModifiedTimestamp = imageModifiedTimestamp
         )
     }
 
@@ -53,12 +57,14 @@ data class ExpenseEntity(
                 id = expense.id,
                 imagePathString = expense.imagePath?.toString(),
                 timestampString = expense.timestamp.format(TIMESTAMP_FORMATTER),
+                expenseDateTimeString = expense.expenseDateTime.format(TIMESTAMP_FORMATTER),
                 serialNumber = expense.serialNumber,
                 amount = expense.amount,
                 description = expense.description,
                 folderName = expense.folderName,
                 receiptType = expense.receiptType,
-                displayOrder = expense.displayOrder
+                displayOrder = expense.displayOrder,
+                imageModifiedTimestamp = expense.imageModifiedTimestamp
             )
         }
     }

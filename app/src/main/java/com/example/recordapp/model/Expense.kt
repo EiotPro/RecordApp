@@ -13,13 +13,15 @@ import java.util.UUID
 data class Expense(
     val id: String = UUID.randomUUID().toString(),
     val imagePath: Uri? = null,
-    val timestamp: LocalDateTime = LocalDateTime.now(),
+    val timestamp: LocalDateTime = LocalDateTime.now(), // Creation timestamp
+    val expenseDateTime: LocalDateTime = LocalDateTime.now(), // Actual expense date/time (editable)
     val serialNumber: String = "",
     val amount: Double = 0.0,
     val description: String = "",
     val folderName: String = "default",
     val receiptType: String = "",
-    val displayOrder: Int = 0
+    val displayOrder: Int = 0,
+    val imageModifiedTimestamp: Long = System.currentTimeMillis() // Track when image was last modified
 ) {
     /**
      * Format the timestamp for display
@@ -38,6 +40,15 @@ data class Expense(
     fun getFormattedDate(context: Context, includeTime: Boolean = true): String {
         val settingsManager = SettingsManager.getInstance(context)
         return settingsManager.formatDate(timestamp, includeTime)
+    }
+
+    /**
+     * Format the expense date/time according to user settings
+     * This is the actual date/time of the expense (editable by user)
+     */
+    fun getFormattedExpenseDateTime(context: Context, includeTime: Boolean = true): String {
+        val settingsManager = SettingsManager.getInstance(context)
+        return settingsManager.formatDate(expenseDateTime, includeTime)
     }
     
     /**

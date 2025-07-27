@@ -54,8 +54,9 @@ class ExpenseRepository private constructor(private val context: Context) {
      * Add a new expense record
      */
     suspend fun addExpense(
-        imagePath: Uri? = null, 
-        timestamp: LocalDateTime = LocalDateTime.now(), 
+        imagePath: Uri? = null,
+        timestamp: LocalDateTime = LocalDateTime.now(),
+        expenseDateTime: LocalDateTime = LocalDateTime.now(),
         serialNumber: String = "",
         amount: Double = 0.0,
         description: String = "",
@@ -67,6 +68,7 @@ class ExpenseRepository private constructor(private val context: Context) {
                 id = UUID.randomUUID().toString(),
                 imagePath = imagePath,
                 timestamp = timestamp,
+                expenseDateTime = expenseDateTime,
                 serialNumber = serialNumber,
                 amount = amount,
                 description = description,
@@ -107,6 +109,15 @@ class ExpenseRepository private constructor(private val context: Context) {
     suspend fun getExpenseById(id: String): Expense? {
         return withContext(Dispatchers.IO) {
             expenseDao.getById(id)?.toExpense()
+        }
+    }
+
+    /**
+     * Get expense by id as Flow (reactive)
+     */
+    fun getExpenseByIdAsFlow(id: String): Flow<Expense?> {
+        return expenseDao.getByIdAsFlow(id).map { entity ->
+            entity?.toExpense()
         }
     }
     

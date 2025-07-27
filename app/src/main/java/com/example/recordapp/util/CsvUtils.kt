@@ -45,7 +45,7 @@ class CsvUtils(private val context: Context) {
                 
                 // Define CSV headers - ensure Serial Number is kept prominent
                 val headers = listOf(
-                    "ID", "Timestamp", "Serial Number", "Amount", 
+                    "ID", "Creation Timestamp", "Expense Date & Time", "Serial Number", "Amount",
                     "Description", "Folder", "Image Path"
                 )
                 
@@ -59,6 +59,7 @@ class CsvUtils(private val context: Context) {
                     listOf(
                         expense.id,
                         expense.getFormattedTimestamp(),
+                        expense.getFormattedExpenseDateTime(context),
                         serialNumber,
                         expense.amount.toString(),
                         expense.description,
@@ -104,7 +105,7 @@ class CsvUtils(private val context: Context) {
                 
                 // Define CSV headers
                 val headers = listOf(
-                    "ID", "Timestamp", "Serial Number", "Amount", 
+                    "ID", "Creation Timestamp", "Expense Date & Time", "Serial Number", "Amount",
                     "Description", "Image Path"
                 )
                 
@@ -118,6 +119,7 @@ class CsvUtils(private val context: Context) {
                     listOf(
                         expense.id,
                         expense.getFormattedTimestamp(),
+                        expense.getFormattedExpenseDateTime(context),
                         serialNumber,
                         expense.amount.toString(),
                         expense.description,
@@ -200,15 +202,15 @@ class CsvUtils(private val context: Context) {
         folderName: String,
         items: Map<Uri, Expense>
     ): Boolean {
-        val headers = listOf("Index", "Timestamp", "Serial Number", "Amount", "Description", "File URI")
+        val headers = listOf("Index", "Creation Timestamp", "Expense Date & Time", "Serial Number", "Amount", "Description", "File URI")
         val rows = ArrayList<List<String>>()
         
         // Add timestamp row at the top
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        rows.add(listOf("", "Generated", timestamp, "", "", ""))
-        rows.add(listOf("", "Folder", folderName, "", "", ""))
-        rows.add(listOf("", "Total Items", items.size.toString(), "", "", ""))
-        rows.add(listOf("", "", "", "", "", "")) // Empty row as separator
+        rows.add(listOf("", "Generated", timestamp, "", "", "", ""))
+        rows.add(listOf("", "Folder", folderName, "", "", "", ""))
+        rows.add(listOf("", "Total Items", items.size.toString(), "", "", "", ""))
+        rows.add(listOf("", "", "", "", "", "", "")) // Empty row as separator
         
         // Add data rows
         items.entries.forEachIndexed { index, (uri, expense) ->
@@ -219,6 +221,7 @@ class CsvUtils(private val context: Context) {
             rows.add(listOf(
                 (index + 1).toString(),
                 expense.getFormattedTimestamp(),
+                expense.getFormattedExpenseDateTime(context),
                 serialNumber,
                 expense.amount.toString(),
                 expense.description,
@@ -240,14 +243,14 @@ class CsvUtils(private val context: Context) {
         expenses: List<Expense>
     ): Boolean {
         // Make Serial Number more prominent in the headers
-        val headers = listOf("Index", "Folder", "Timestamp", "Serial Number", "Amount", "Description", "Image Path")
+        val headers = listOf("Index", "Folder", "Creation Timestamp", "Expense Date & Time", "Serial Number", "Amount", "Description", "Image Path")
         val rows = ArrayList<List<String>>()
         
         // Add timestamp row at the top
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        rows.add(listOf("", "Generated", timestamp, "", "", "", ""))
-        rows.add(listOf("", "Total Expenses", expenses.size.toString(), "", "", "", ""))
-        rows.add(listOf("", "", "", "", "", "", "")) // Empty row as separator
+        rows.add(listOf("", "Generated", timestamp, "", "", "", "", ""))
+        rows.add(listOf("", "Total Expenses", expenses.size.toString(), "", "", "", "", ""))
+        rows.add(listOf("", "", "", "", "", "", "", "")) // Empty row as separator
         
         // Group expenses by folder
         val groupedExpenses = expenses.groupBy { it.folderName }
@@ -256,14 +259,15 @@ class CsvUtils(private val context: Context) {
         var runningIndex = 1
         groupedExpenses.forEach { (folderName, folderExpenses) ->
             // Add folder header
-            rows.add(listOf("", "FOLDER", folderName, "", "", "", ""))
-            
+            rows.add(listOf("", "FOLDER", folderName, "", "", "", "", ""))
+
             // Add expenses for this folder
             folderExpenses.forEach { expense ->
                 rows.add(listOf(
                     runningIndex.toString(),
                     folderName,
                     expense.getFormattedTimestamp(),
+                    expense.getFormattedExpenseDateTime(context),
                     expense.serialNumber,
                     expense.amount.toString(),
                     expense.description,
@@ -271,9 +275,9 @@ class CsvUtils(private val context: Context) {
                 ))
                 runningIndex++
             }
-            
+
             // Add empty row as separator between folders
-            rows.add(listOf("", "", "", "", "", "", ""))
+            rows.add(listOf("", "", "", "", "", "", "", ""))
         }
         
         return generateCsv(outputStream, headers, rows)
@@ -315,15 +319,11 @@ class CsvUtils(private val context: Context) {
         
         return file
     }
-    
+
     /**
      * Format timestamp as readable date
      */
     private fun formatTimestamp(timestamp: Long): String {
-        val dateTime = LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(timestamp),
-            ZoneId.systemDefault()
-        )
-        return dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        return DateUtils.formatTimestamp(timestamp, includeTime = true)
     }
 } 

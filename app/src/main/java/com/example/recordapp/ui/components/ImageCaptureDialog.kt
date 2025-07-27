@@ -50,6 +50,7 @@ import com.example.recordapp.util.OcrResult
 import com.example.recordapp.util.FileUtils
 import com.example.recordapp.util.SettingsManager
 import com.example.recordapp.util.UcropHelper
+import com.example.recordapp.ui.components.datepicker.DateTimePicker
 import java.io.File
 import android.widget.Toast
 import kotlinx.coroutines.launch
@@ -69,7 +70,7 @@ fun ImageCaptureDialog(
     imageUri: Uri?,
     ocrResult: OcrResult?,
     folderName: String,
-    onSave: (String, String, Double) -> Unit,
+    onSave: (String, String, Double, java.time.LocalDateTime) -> Unit,
     onOcrRequest: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -79,6 +80,7 @@ fun ImageCaptureDialog(
     var serialNumber by remember { mutableStateOf(ocrResult?.serialNumber ?: "") }
     var amount by remember { mutableStateOf(if (ocrResult?.amount ?: 0.0 > 0) ocrResult?.amount.toString() else "") }
     var description by remember { mutableStateOf(ocrResult?.description ?: "") }
+    var expenseDateTime by remember { mutableStateOf(java.time.LocalDateTime.now()) }
     
     // Rotation state for the image (keeping for compatibility but not showing rotation controls)
     var imageRotation by remember { mutableStateOf(0f) }
@@ -341,7 +343,7 @@ fun ImageCaptureDialog(
                                 }
                                 
                                 // Use currentImageUri which might contain the cropped image
-                                onSave(serialNumber, description, amountValue)
+                                onSave(serialNumber, description, amountValue, expenseDateTime)
                                 Log.d("ImageCaptureDialog", "Saving expense to folder: $folderName with image: $currentImageUri")
                                 Toast.makeText(context, "Expense saved successfully", Toast.LENGTH_SHORT).show()
                             }
@@ -564,8 +566,18 @@ fun ImageCaptureDialog(
                 )
                 
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 // Form inputs
+                // Date & Time picker (first field)
+                DateTimePicker(
+                    selectedDateTime = expenseDateTime,
+                    onDateTimeSelected = { expenseDateTime = it },
+                    label = "Expense Date & Time",
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 OutlinedTextField(
                     value = serialNumber,
                     onValueChange = { serialNumber = it },

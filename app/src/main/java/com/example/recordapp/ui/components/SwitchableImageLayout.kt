@@ -2,14 +2,13 @@ package com.example.recordapp.ui.components
 
 import android.net.Uri
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.recordapp.ui.components.common.ViewModeToggle
+import com.example.recordapp.ui.components.common.ViewModeToggleStyle
 
 /**
  * A layout that allows switching between grid and list views for image reordering
@@ -39,36 +38,12 @@ fun SwitchableImageLayout(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(end = 8.dp)
             )
-            
-            // Grid view toggle button
-            IconToggleButton(
-                checked = isGridView,
-                onCheckedChange = { isGridView = true }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.GridView,
-                    contentDescription = "Grid View",
-                    tint = if (isGridView) 
-                        MaterialTheme.colorScheme.primary
-                    else 
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            // List view toggle button
-            IconToggleButton(
-                checked = !isGridView,
-                onCheckedChange = { isGridView = false }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ViewList,
-                    contentDescription = "List View",
-                    tint = if (!isGridView) 
-                        MaterialTheme.colorScheme.primary
-                    else 
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+
+            ViewModeToggle(
+                isGridView = isGridView,
+                onViewModeChange = { isGridView = it },
+                style = ViewModeToggleStyle.IconButtons
+            )
         }
         
         // Display the appropriate layout based on the selected view mode

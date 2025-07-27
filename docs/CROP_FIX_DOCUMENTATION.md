@@ -41,17 +41,21 @@ The application was still experiencing "Image cropping error: /ucrop_cache/cropp
 - **Better URI Handling**: Enhanced validation of source and destination URIs to prevent access issues.
 - **Removed Unnecessary Process Isolation**: Removed the separate process flag from UCrop Activity declaration.
 - **Optimized File Management**: Improved how cropped files are saved and managed.
-- **Enhanced Error Handling**: Better error reporting and recovery logic.
+- **Enhanced Error Handling**: Better error reporting and recovery logic with graceful permission handling.
 - **Fixed Directory Creation**: Added robust directory creation and validation to prevent ENOENT errors.
 - **Implemented Fallback Mechanisms**: Added multiple fallback paths and error recovery to ensure operation succeeds even under difficult conditions.
-- **Switched Storage Location**: Changed from using cache directory to internal files directory for more reliable file operations.
+- **Switched Storage Location**: Changed to using external cache directory (with internal cache fallback) for UCrop compatibility.
+- **Removed Deprecated Code**: Cleaned up deprecated methods and improved code maintainability.
+- **Android Version Compatibility**: Enhanced permission handling to work gracefully across different Android versions.
 
 ### 3. File Changes
 
-- **UcropHelper.kt**: Complete rewrite with cleaner architecture, better error handling, and robust directory creation using internal files directory.
+- **UcropHelper.kt**: Complete rewrite with cleaner architecture, better error handling, and robust directory creation using external cache directory with fallback mechanisms.
+- **UcropFileUtils.kt**: New utility class for handling UCrop-specific file operations with proper permission management.
 - **ImageCaptureDialog.kt**: Updated to use the new cropping functionality with improved error handling.
 - **AndroidManifest.xml**: Modified UCrop activity declaration and added additional storage permissions.
 - **file_paths.xml**: Added multiple path declarations to ensure proper file access in all scenarios.
+- **CropFunctionTest.kt**: Enhanced test class for comprehensive validation of cropping functionality.
 
 ## Implementation Details
 
@@ -95,14 +99,16 @@ The application was still experiencing "Image cropping error: /ucrop_cache/cropp
 ## How it Works
 
 1. **User initiates crop**: Taps the crop button in the image dialog
-2. **Directory Creation**: System creates a dedicated directory in internal files storage
-3. **Validation**: System validates the source image is accessible
-4. **Destination Creation**: Creates a destination file in the internal files directory
-5. **Crop Activity**: UCrop activity launches with the proper configuration
-6. **User crops image**: User makes adjustments and confirms the crop
-7. **Result validation**: System verifies the cropped image URI is accessible
-8. **Result processing**: System saves the cropped image and updates the UI
-9. **Final state**: Cropped image is displayed and saved to the appropriate folder
+2. **Directory Creation**: System creates a dedicated directory in external cache storage (with fallback to internal cache)
+3. **Source Preparation**: Source image is prepared using UcropFileUtils to ensure UCrop can access it
+4. **Validation**: System validates the source image is accessible
+5. **Destination Creation**: Creates a destination file in the external cache directory with proper permissions
+6. **Crop Activity**: UCrop activity launches with the proper configuration
+7. **User crops image**: User makes adjustments and confirms the crop
+8. **Result validation**: System verifies the cropped image URI is accessible
+9. **Result processing**: System saves the cropped image to the specified folder and updates the UI
+10. **Cleanup**: Temporary files are cleaned up automatically
+11. **Final state**: Cropped image is displayed and saved to the appropriate folder
 
 ## Error Handling
 

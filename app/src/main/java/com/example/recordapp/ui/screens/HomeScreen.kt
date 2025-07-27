@@ -499,12 +499,13 @@ fun HomeScreen(
                 imageUri = currentImageUri,
                 ocrResult = ocrResult,
                 folderName = currentFolder,
-                onSave = { serialNumber, description, amount ->
+                onSave = { serialNumber, description, amount, expenseDateTime ->
                     viewModel.addExpense(
                         imagePath = currentImageUri,
                         serialNumber = serialNumber,
                         amount = amount,
                         description = description,
+                        expenseDateTime = expenseDateTime,
                         compressionQuality = settings.imageCompression
                     )
                     currentImageUri = null

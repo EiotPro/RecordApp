@@ -204,7 +204,8 @@ class PdfUtils(private val context: Context) {
                 // Add additional expense details
                 val additionalInfo = mutableMapOf<String, String>()
                 additionalInfo["Amount"] = expense.amount.toString()
-                additionalInfo["Date"] = expense.getFormattedTimestamp()
+                additionalInfo["Creation Date"] = expense.getFormattedTimestamp()
+                additionalInfo["Expense Date & Time"] = expense.getFormattedExpenseDateTime(context)
                 additionalInfo["Folder"] = expense.folderName
                 // Use the exact serial number without any transformation
                 additionalInfo["Serial Number"] = expense.serialNumber
@@ -2240,11 +2241,7 @@ class PdfUtils(private val context: Context) {
      * Format timestamp as readable date
      */
     private fun formatTimestamp(timestamp: Long): String {
-        val dateTime = LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(timestamp),
-            ZoneId.systemDefault()
-        )
-        return dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        return DateUtils.formatTimestamp(timestamp)
     }
     
     /**

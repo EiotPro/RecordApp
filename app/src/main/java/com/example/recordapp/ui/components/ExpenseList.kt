@@ -262,8 +262,8 @@ fun ExpenseItem(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(expense.imagePath)
-                            .memoryCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
-                            .diskCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .memoryCacheKey("${expense.imagePath?.toString()}-${expense.imageModifiedTimestamp}")
+                            .diskCacheKey("${expense.imagePath?.toString()}-${expense.imageModifiedTimestamp}")
                             .build(),
                         contentDescription = "Expense image",
                         modifier = Modifier

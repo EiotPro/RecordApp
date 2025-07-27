@@ -11,6 +11,7 @@ import com.example.recordapp.network.SupabaseClient
 import com.example.recordapp.repository.AuthRepository
 import com.example.recordapp.util.CsvUtils
 import com.example.recordapp.util.PdfUtils
+import com.example.recordapp.util.SignInHistoryManager
 import com.example.recordapp.util.ReportGenerator
 import dagger.Module
 import dagger.Provides
@@ -33,9 +34,10 @@ object RepositoryModule {
     @Singleton
     fun provideAuthRepository(
         @ApplicationContext context: Context,
-        supabaseClient: SupabaseClient
+        supabaseClient: SupabaseClient,
+        signInHistoryManager: SignInHistoryManager
     ): AuthRepository {
-        return AuthRepository(context, supabaseClient)
+        return AuthRepository(context, supabaseClient, signInHistoryManager)
     }
 
     @Provides
@@ -71,6 +73,14 @@ object RepositoryModule {
     @Singleton
     fun providePdfUtils(@ApplicationContext context: Context): PdfUtils {
         return PdfUtils(context)
+    }
+
+    /**
+     * Provides SignInHistoryManager
+     */
+    @Provides
+    fun provideSignInHistoryManager(@ApplicationContext context: Context): SignInHistoryManager {
+        return SignInHistoryManager(context)
     }
     
     /**

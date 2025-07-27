@@ -23,6 +23,7 @@ import coil.request.ImageRequest
 import com.example.recordapp.R
 import com.example.recordapp.model.Expense
 import com.example.recordapp.ui.components.FullScreenImageViewer
+import com.example.recordapp.ui.components.datepicker.DateTimePicker
 import com.example.recordapp.util.AppImageLoader
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.flow.asFlow
@@ -168,7 +169,17 @@ fun ExpenseDetails(expense: Expense, viewModel: ExpenseViewModel) {
         }
         
         Spacer(modifier = Modifier.height(8.dp))
-        
+
+        // Expense Date & Time (editable)
+        ExpenseDateTimeField(
+            expense = expense,
+            onDateTimeChanged = { newDateTime ->
+                viewModel.updateExpenseDateTime(expense.id, newDateTime)
+            }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Serial Number
         if (expense.serialNumber.isNotBlank()) {
             Text(
@@ -221,8 +232,8 @@ fun ExpenseDetails(expense: Expense, viewModel: ExpenseViewModel) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(expense.imagePath)
-                            .memoryCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
-                            .diskCacheKey("${expense.imagePath?.toString()}-${System.currentTimeMillis()}")
+                            .memoryCacheKey("${expense.imagePath?.toString()}-${expense.imageModifiedTimestamp}")
+                            .diskCacheKey("${expense.imagePath?.toString()}-${expense.imageModifiedTimestamp}")
                             .build(),
                         contentDescription = "Expense image",
                         modifier = Modifier.fillMaxWidth(),
@@ -286,4 +297,94 @@ fun ExpenseDetails(expense: Expense, viewModel: ExpenseViewModel) {
             }
         }
     }
-} 
+}
+
+/**
+ * Editable expense date/time field component
+ */
+@Composable
+private fun ExpenseDateTimeField(
+    expense: Expense,
+    onDateTimeChanged: (java.time.LocalDateTime) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isEditing by remember(expense.id) { mutableStateOf(false) }
+    var tempDateTime by remember(expense.id, expense.expenseDateTime) { mutableStateOf(expense.expenseDateTime) }
+
+    // Update tempDateTime when expense changes (but not when editing)
+    LaunchedEffect(expense.expenseDateTime) {
+        if (!isEditing) {
+            tempDateTime = expense.expenseDateTime
+        }
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Expense Date & Time",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                TextButton(
+                    onClick = {
+                        if (isEditing) {
+                            onDateTimeChanged(tempDateTime)
+                            isEditing = false
+                        } else {
+                            tempDateTime = expense.expenseDateTime
+                            isEditing = true
+                        }
+                    }
+                ) {
+                    Text(if (isEditing) "Save" else "Edit")
+                }
+            }
+
+            if (isEditing) {
+                DateTimePicker(
+                    selectedDateTime = tempDateTime,
+                    onDateTimeSelected = { newDateTime ->
+                        tempDateTime = newDateTime
+                    },
+                    label = "Select Date & Time",
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            tempDateTime = expense.expenseDateTime
+                            isEditing = false
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            } else {
+                Text(
+                    text = expense.getFormattedExpenseDateTime(LocalContext.current),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}

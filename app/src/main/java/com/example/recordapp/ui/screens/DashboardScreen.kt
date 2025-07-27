@@ -682,13 +682,14 @@ fun DashboardScreen(
             imageUri = currentImageUri,
             ocrResult = ocrResult,
             folderName = currentFolderValue,
-            onSave = { serialNum, desc, amt ->
+            onSave = { serialNum, desc, amt, expenseDateTime ->
                 viewModel.addExpenseWithImage(
                     description = desc,
                     amount = amt,
                     folderName = currentFolderValue,
                     imageUri = currentImageUri,
                     serialNumber = serialNum,
+                    expenseDateTime = expenseDateTime,
                     generateRandomSerialIfBlank = true
                 )
                 showImageCaptureDialog = false

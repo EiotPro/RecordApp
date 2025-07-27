@@ -266,6 +266,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         folderName: String = "default",
         imagePath: Uri? = null,
         serialNumber: String = "",
+        expenseDateTime: LocalDateTime = LocalDateTime.now(),
         compressionQuality: Int = FileUtils.DEFAULT_COMPRESSION_QUALITY,
         receiptType: String = "",
         generateRandomSerialIfBlank: Boolean = true
@@ -302,6 +303,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 val expense = repository.addExpense(
                     imagePath = processedImageUri ?: imagePath,
                     timestamp = LocalDateTime.now(),
+                    expenseDateTime = expenseDateTime,
                     serialNumber = finalSerialNumber,
                     amount = amount,
                     description = description,
@@ -400,10 +402,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 // Use original expenses without modifying serial numbers
                 val verifiedExpenses = allExpenses
                 
-                // Log expenses
-                verifiedExpenses.forEachIndexed { index, expense ->
-                    Log.d(TAG, "Post-verify PDF Expense #$index: serialNumber=${expense.serialNumber}, id=${expense.id}")
-                }
+
                 
                 val context = getApplication<Application>()
                 // Using PdfUtils companion object method to generate PDF
@@ -629,10 +628,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     }
     
     /**
-     * Get a specific expense by ID
+     * Get a specific expense by ID (reactive - updates when expense changes)
      */
-    fun getExpenseById(id: String): Flow<Expense?> = flow {
-        emit(repository.getExpenseById(id))
+    fun getExpenseById(id: String): Flow<Expense?> {
+        return repository.getExpenseByIdAsFlow(id)
     }
     
     /**
@@ -1055,7 +1054,43 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-    
+
+    /**
+     * Update the expense date/time for a specific expense
+     */
+    fun updateExpenseDateTime(expenseId: String, newDateTime: LocalDateTime) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+
+                val expense = repository.getExpenseById(expenseId)
+                if (expense != null) {
+                    val updatedExpense = expense.copy(expenseDateTime = newDateTime)
+                    repository.updateExpense(updatedExpense)
+
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = null
+                    )
+
+                    // Note: No need to manually refresh - the Flow will automatically emit the updated expense
+                } else {
+                    Log.e(TAG, "Expense not found: $expenseId")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Expense not found"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating expense date/time", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to update expense date/time: ${e.message}"
+                )
+            }
+        }
+    }
+
     /**
      * Add a new expense with an image
      */
@@ -1065,6 +1100,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         folderName: String = "default",
         imageUri: Uri? = null,
         serialNumber: String = "",
+        expenseDateTime: LocalDateTime = LocalDateTime.now(),
         compressionQuality: Int? = null,
         generateRandomSerialIfBlank: Boolean = true
     ) {
@@ -1080,6 +1116,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             folderName = folderName,
             imagePath = imageUri,
             serialNumber = serialNumber,
+            expenseDateTime = expenseDateTime,
             compressionQuality = compQuality,
             receiptType = receiptType,
             generateRandomSerialIfBlank = generateRandomSerialIfBlank
@@ -1829,18 +1866,43 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     )
                     return@launch
                 }
-                
-                // Clear the image cache for the URI to force reload
+
+                // CRITICAL: Update the expense with new imageModifiedTimestamp to force UI refresh
+                Log.d(TAG, "Updating expense with new imageModifiedTimestamp...")
+                val updatedExpense = expense.copy(
+                    imageModifiedTimestamp = System.currentTimeMillis()
+                )
+                repository.updateExpense(updatedExpense)
+
+                // ENHANCED CACHE CLEARING - Clear all caches to force reload
+                Log.d(TAG, "Clearing image caches for rotated image...")
+
+                // Clear cache for the specific URI
                 AppImageLoader.clearCacheForUri(getApplication(), rotatedImageUri)
-                
+
+                // Also clear cache for the original image path (in case it's the same)
+                AppImageLoader.clearCacheForUri(getApplication(), imagePath)
+
+                // Clear all caches as a fallback
+                AppImageLoader.clearCaches()
+
+                // Force garbage collection to ensure memory is freed
+                System.gc()
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     errorMessage = null
                 )
-                
+
                 // Force refresh of expense lists to show the rotated image
                 refreshExpenseLists()
-                
+
+                // Additional refresh after a short delay to ensure UI updates
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(500) // Wait 500ms
+                    refreshExpenseLists()
+                }
+
                 Log.d(TAG, "Successfully rotated image for expense $expenseId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error rotating expense image", e)

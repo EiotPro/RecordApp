@@ -20,7 +20,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -72,7 +71,7 @@ object FileUtils {
         val storageDir = createFolderIfNotExists(context, folderName)
         
         // Create a unique filename
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val timeStamp = DateUtils.getTimestampForFileName()
         val imageFileName = "JPEG_${timeStamp}_"
         
         val file = File.createTempFile(
@@ -105,12 +104,50 @@ object FileUtils {
      */
     fun saveBitmapToFile(bitmap: Bitmap, file: File, quality: Int = DEFAULT_COMPRESSION_QUALITY): Boolean {
         return try {
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            Log.d(TAG, "Saving bitmap to file: ${file.absolutePath}")
+            Log.d(TAG, "Bitmap size: ${bitmap.width}x${bitmap.height}")
+            Log.d(TAG, "Quality: $quality")
+
+            // Ensure parent directory exists
+            file.parentFile?.let { parent ->
+                if (!parent.exists()) {
+                    val created = parent.mkdirs()
+                    Log.d(TAG, "Created parent directory: $created")
+                }
             }
+
+            // Save the bitmap
+            FileOutputStream(file).use { out ->
+                val success = bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                out.flush()
+                Log.d(TAG, "Bitmap compression success: $success")
+
+                if (!success) {
+                    Log.e(TAG, "Bitmap compression returned false")
+                    return false
+                }
+            }
+
+            // Verify file was written
+            if (!file.exists()) {
+                Log.e(TAG, "File does not exist after save operation")
+                return false
+            }
+
+            val fileSize = file.length()
+            Log.d(TAG, "File saved successfully, size: $fileSize bytes")
+
+            if (fileSize == 0L) {
+                Log.e(TAG, "File is empty after save operation")
+                return false
+            }
+
             true
         } catch (e: IOException) {
-            Log.e(TAG, "Error saving bitmap to file", e)
+            Log.e(TAG, "Error saving bitmap to file: ${e.message}", e)
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error saving bitmap to file: ${e.message}", e)
             false
         }
     }
@@ -355,7 +392,7 @@ object FileUtils {
 
     // Creates a temporary file for storing camera output
     fun createTempImageFile(context: Context): File {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val timeStamp = DateUtils.getTimestampForFileName()
         val imageFileName = "JPEG_${timeStamp}_"
         val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
         return File.createTempFile(imageFileName, ".jpg", storageDir)
@@ -409,8 +446,7 @@ object FileUtils {
     
     // Get the properly formatted date as a string
     fun getFormattedDate(): String {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
-        return dateFormat.format(Date())
+        return DateUtils.getFormattedDateForFileName()
     }
 
     // Create a file in the appropriate storage location based on Android version
@@ -502,27 +538,90 @@ object FileUtils {
      */
     fun rotateImage(context: Context, imageUri: Uri, degrees: Float, compressionQuality: Int = DEFAULT_COMPRESSION_QUALITY): Uri? {
         try {
+            Log.d(TAG, "=== STARTING IMAGE ROTATION ===")
             Log.d(TAG, "Rotating image by $degrees degrees: $imageUri")
-            
+            Log.d(TAG, "URI scheme: ${imageUri.scheme}")
+            Log.d(TAG, "URI path: ${imageUri.path}")
+
             // Get bitmap from URI
-            val bitmap = getBitmapFromUri(context, imageUri) ?: return null
-            
+            Log.d(TAG, "Step 1: Loading bitmap from URI...")
+            val bitmap = getBitmapFromUri(context, imageUri)
+            if (bitmap == null) {
+                Log.e(TAG, "Failed to load bitmap from URI: $imageUri")
+                return null
+            }
+            Log.d(TAG, "Bitmap loaded successfully: ${bitmap.width}x${bitmap.height}")
+
             // Rotate the bitmap
+            Log.d(TAG, "Step 2: Rotating bitmap by $degrees degrees...")
             val rotatedBitmap = rotateBitmap(bitmap, degrees)
-            
+            Log.d(TAG, "Bitmap rotated successfully: ${rotatedBitmap.width}x${rotatedBitmap.height}")
+
             // Get the file path from URI
+            Log.d(TAG, "Step 3: Getting file from URI...")
             val file = getFileFromUri(context, imageUri)
             if (file == null) {
                 Log.e(TAG, "Failed to get file from URI: $imageUri")
                 return null
             }
-            
+            Log.d(TAG, "File resolved: ${file.absolutePath}")
+            Log.d(TAG, "File exists: ${file.exists()}")
+            Log.d(TAG, "File can write: ${file.canWrite()}")
+
             // Save the rotated bitmap back to the file
+            Log.d(TAG, "Step 4: Saving rotated bitmap to file...")
+
+            // ENHANCED: Create a backup and ensure file is writable
+            val backupFile = File(file.parentFile, "${file.nameWithoutExtension}_backup_${System.currentTimeMillis()}.jpg")
+            try {
+                // Create backup of original
+                if (file.exists()) {
+                    file.copyTo(backupFile, overwrite = true)
+                    Log.d(TAG, "Created backup: ${backupFile.absolutePath}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not create backup: ${e.message}")
+            }
+
+            // Ensure file is writable
+            if (file.exists() && !file.canWrite()) {
+                try {
+                    file.setWritable(true)
+                    Log.d(TAG, "Made file writable")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not make file writable: ${e.message}")
+                }
+            }
+
             if (saveBitmapToFile(rotatedBitmap, file, compressionQuality)) {
                 Log.d(TAG, "Image rotated successfully and saved to: ${file.absolutePath}")
+
+                // Clean up backup file
+                try {
+                    if (backupFile.exists()) {
+                        backupFile.delete()
+                        Log.d(TAG, "Cleaned up backup file")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not clean up backup: ${e.message}")
+                }
+
+                Log.d(TAG, "=== ROTATION COMPLETED SUCCESSFULLY ===")
                 return imageUri
             } else {
                 Log.e(TAG, "Failed to save rotated bitmap to file")
+
+                // Restore from backup if save failed
+                try {
+                    if (backupFile.exists()) {
+                        backupFile.copyTo(file, overwrite = true)
+                        backupFile.delete()
+                        Log.d(TAG, "Restored from backup after save failure")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not restore from backup: ${e.message}")
+                }
+
                 return null
             }
         } catch (e: Exception) {
@@ -536,53 +635,78 @@ object FileUtils {
      */
     fun getFileFromUri(context: Context, uri: Uri): File? {
         try {
+            Log.d(TAG, "=== RESOLVING FILE FROM URI ===")
+            Log.d(TAG, "Input URI: $uri")
+            Log.d(TAG, "URI scheme: ${uri.scheme}")
+            Log.d(TAG, "URI path: ${uri.path}")
+
             // Handle content:// scheme
             if (ContentResolver.SCHEME_CONTENT == uri.scheme) {
+                Log.d(TAG, "Handling content:// URI")
+
                 // Check if it's a FileProvider URI from our app
                 val path = uri.path
+                Log.d(TAG, "URI path: $path")
+
                 if (path != null && path.contains("/external/")) {
+                    Log.d(TAG, "Found FileProvider external path")
                     val segments = path.split("/external/").toTypedArray()
                     if (segments.size > 1) {
                         val relativePath = segments[1]
-                        return File(context.getExternalFilesDir(null), relativePath)
+                        val file = File(context.getExternalFilesDir(null), relativePath)
+                        Log.d(TAG, "Resolved to external files: ${file.absolutePath}")
+                        return file
                     }
                 }
-                
+
                 // For other content URIs, try to get the actual file path
+                Log.d(TAG, "Trying to query content resolver for file path...")
                 context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) {
                         val columnIndex = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                        Log.d(TAG, "DATA column index: $columnIndex")
                         if (columnIndex != -1) {
                             val filePath = cursor.getString(columnIndex)
+                            Log.d(TAG, "Found file path from cursor: $filePath")
                             if (!filePath.isNullOrEmpty()) {
-                                return File(filePath)
+                                val file = File(filePath)
+                                Log.d(TAG, "Resolved to file: ${file.absolutePath}")
+                                return file
                             }
                         }
                     }
                 }
-                
+
                 // If we couldn't get the file path, create a copy in the cache directory
+                Log.d(TAG, "Creating temporary copy in cache directory...")
                 val fileName = getFileNameFromUri(context, uri) ?: "temp_file"
                 val extension = getFileExtensionFromUri(context, uri) ?: ""
                 val tempFile = File(context.cacheDir, "${fileName}_copy${if (extension.isNotEmpty()) ".$extension" else ""}")
-                
+                Log.d(TAG, "Temp file path: ${tempFile.absolutePath}")
+
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
                     }
                 }
-                
+
+                Log.d(TAG, "Copied content to temp file: ${tempFile.absolutePath}")
                 return tempFile
             }
             // Handle file:// scheme
             else if (ContentResolver.SCHEME_FILE == uri.scheme) {
-                return File(uri.path ?: "")
+                Log.d(TAG, "Handling file:// URI")
+                val file = File(uri.path ?: "")
+                Log.d(TAG, "Resolved to file: ${file.absolutePath}")
+                return file
             }
-            
+
             Log.e(TAG, "Could not determine file path from URI: $uri")
+            Log.d(TAG, "=== FILE RESOLUTION FAILED ===")
             return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting file from URI", e)
+            Log.e(TAG, "Error getting file from URI: ${e.message}", e)
+            Log.d(TAG, "=== FILE RESOLUTION ERROR ===")
             return null
         }
     }

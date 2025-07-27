@@ -17,7 +17,7 @@ import com.example.recordapp.model.ExpenseEntity
  */
 @Database(
     entities = [ExpenseEntity::class],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -62,6 +62,28 @@ abstract class AppDatabase : RoomDatabase() {
         }
         
         /**
+         * Migration from version 5 to 6 to add imageModifiedTimestamp field for image rotation tracking
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE expenses ADD COLUMN imageModifiedTimestamp INTEGER NOT NULL DEFAULT ${System.currentTimeMillis()}")
+                Log.i("AppDatabase", "Migration 5 to 6 completed - added imageModifiedTimestamp field")
+            }
+        }
+
+        /**
+         * Migration from version 6 to 7 to add expenseDateTimeString field for custom expense date/time
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add expenseDateTimeString column with current timestamp as default
+                val currentDateTime = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                database.execSQL("ALTER TABLE expenses ADD COLUMN expenseDateTimeString TEXT NOT NULL DEFAULT '$currentDateTime'")
+                Log.i("AppDatabase", "Migration 6 to 7 completed - added expenseDateTimeString field")
+            }
+        }
+
+        /**
          * Migration from version 5 to 4 to handle backup restore from versions that had admin functionality
          */
         private val MIGRATION_5_4 = object : Migration(5, 4) {
@@ -90,7 +112,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_5_4)
                 .fallbackToDestructiveMigrationOnDowngrade() // Allow destructive downgrade as a last resort
                 .build()
                 .also { INSTANCE = it }

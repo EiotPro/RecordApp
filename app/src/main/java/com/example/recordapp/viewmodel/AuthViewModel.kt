@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.recordapp.model.User
 import com.example.recordapp.repository.AuthRepository
+import com.example.recordapp.util.SignInHistoryManager
 import com.example.recordapp.util.PermissionUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,12 +27,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     
     // Current user
     val currentUser = repository.currentUser
+
+    // Sign-in history
+    private val _signInHistory = MutableStateFlow<List<SignInHistoryManager.SignInRecord>>(emptyList())
+    val signInHistory: StateFlow<List<SignInHistoryManager.SignInRecord>> = _signInHistory.asStateFlow()
     
     init {
         // Check if user is already logged in
         _uiState.value = _uiState.value.copy(
             isLoggedIn = repository.isLoggedIn()
         )
+
+        // Load sign-in history
+        loadSignInHistory()
     }
     
     /**
@@ -223,6 +231,41 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(
             errorMessage = null
         )
+    }
+
+    /**
+     * Load sign-in history
+     */
+    private fun loadSignInHistory() {
+        viewModelScope.launch {
+            try {
+                val history = repository.getSignInHistory()
+                _signInHistory.value = history
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading sign-in history", e)
+            }
+        }
+    }
+
+    /**
+     * Refresh sign-in history
+     */
+    fun refreshSignInHistory() {
+        loadSignInHistory()
+    }
+
+    /**
+     * Clear sign-in history
+     */
+    fun clearSignInHistory() {
+        viewModelScope.launch {
+            try {
+                repository.clearSignInHistory()
+                _signInHistory.value = emptyList()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing sign-in history", e)
+            }
+        }
     }
     
     companion object {

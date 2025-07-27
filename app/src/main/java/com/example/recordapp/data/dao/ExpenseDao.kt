@@ -51,6 +51,12 @@ interface ExpenseDao {
      */
     @Query("SELECT * FROM expenses WHERE id = :id")
     suspend fun getById(id: String): ExpenseEntity?
+
+    /**
+     * Get an expense by ID as Flow (reactive)
+     */
+    @Query("SELECT * FROM expenses WHERE id = :id")
+    fun getByIdAsFlow(id: String): Flow<ExpenseEntity?>
     
     /**
      * Get all expenses as Flow

@@ -35,7 +35,8 @@ object UcropFileUtils {
             directory.setReadable(true, false)
             directory.setWritable(true, false)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to set directory permissions: ${e.message}")
+            Log.w(TAG, "Could not set directory permissions (this may be normal on newer Android versions): ${e.message}")
+            // This is not fatal - UCrop may still work through content URIs
         }
         
         return directory.exists() && directory.isDirectory
@@ -76,7 +77,8 @@ object UcropFileUtils {
                         file.setReadable(true, false)
                         file.setWritable(true, false)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to set file permissions: ${e.message}")
+                        Log.w(TAG, "Could not set file permissions (this may be normal on newer Android versions): ${e.message}")
+                        // This is not fatal - UCrop may still work through content URIs
                     }
                     return sourceUri
                 }
@@ -102,15 +104,17 @@ object UcropFileUtils {
             
             // Set permissions - required for UCrop library
             @Suppress("SetWorldReadable", "SetWorldWritable")
-            destFile.setReadable(true, false)
-            destFile.setWritable(true, false)
+            try {
+                destFile.setReadable(true, false)
+                destFile.setWritable(true, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not set file permissions (this may be normal on newer Android versions): ${e.message}")
+                // This is not fatal - UCrop may still work through content URIs
+            }
             
-            // Return as content URI
-            return FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                destFile
-            )
+            // CRITICAL FIX: Return file URI directly for UCrop compatibility
+            // UCrop has issues with content URIs on some Android versions
+            return Uri.fromFile(destFile)
         } catch (e: Exception) {
             Log.e(TAG, "Error preparing image for UCrop: ${e.message}", e)
             return sourceUri // Return original as fallback

@@ -15,7 +15,7 @@ import androidx.navigation.NavHostController
 import androidx.paging.PagingData
 import com.example.recordapp.ui.components.FullScreenImageViewer
 import com.example.recordapp.ui.components.SwitchablePaginatedLayout
-import com.example.recordapp.ui.components.ViewModeToggle
+import com.example.recordapp.ui.components.common.ViewModeToggle
 import com.example.recordapp.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
