@@ -221,46 +221,6 @@ class PdfUtils(private val context: Context) {
         }
         
         /**
-         * Generate a PDF file for expenses in a specific folder
-         */
-        fun generatePdfByFolder(context: Context, expenses: List<Expense>, folderName: String): File? {
-            try {
-                Log.d(TAG, "Generating PDF for folder: $folderName")
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val pdfFile = File(context.externalCacheDir, "RecordApp_Folder_${folderName}_$timestamp.pdf")
-                val outputStream = FileOutputStream(pdfFile)
-                
-                // Filter expenses for the specific folder
-                val folderExpenses = expenses.filter { it.folderName == folderName }
-                if (folderExpenses.isEmpty()) {
-                    Log.e(TAG, "No expenses found in folder: $folderName")
-                    return null
-                }
-                
-                // Collect image URIs and descriptions
-                val imageUris = folderExpenses.mapNotNull { it.imagePath }
-                val descriptions = folderExpenses.mapNotNull { it.imagePath }
-                    .associateWith { uri -> 
-                        folderExpenses.find { it.imagePath == uri }?.description
-                    }
-                // Collect serial numbers for each image
-                val serialNumbers = folderExpenses.mapNotNull { it.imagePath }
-                    .associateWith { uri ->
-                        folderExpenses.find { it.imagePath == uri }?.serialNumber ?: ""
-                    }
-
-                val generator = PdfUtils(context)
-                generator.generateFolderPdf(outputStream, folderName, imageUris, descriptions, serialNumbers)
-                outputStream.close()
-                
-                return pdfFile
-            } catch (e: Exception) {
-                Log.e(TAG, "Error generating folder PDF", e)
-                return null
-            }
-        }
-        
-        /**
          * Generate a PDF with images arranged in a grid layout
          */
         fun generateImageGridPdf(context: Context, expenses: List<Expense>, gridSize: GridSize): File? {
@@ -407,22 +367,27 @@ class PdfUtils(private val context: Context) {
                             
                             // Add metadata below image
                             document.add(
-                                Paragraph("Date: ${expense.getFormattedTimestamp()}")
+                                Paragraph("Index Number: ${index + 1}")
                                     .setTextAlignment(TextAlignment.CENTER)
                                     .setFontSize(10f)
                                     .setMarginTop(10f)
                             )
-
-                            // Add amount below date
-                            run {
-                                val settingsManager = SettingsManager.getInstance(context)
-                                val amountText = settingsManager.formatAmount(expense.amount)
-                                document.add(
-                                    Paragraph("Amount: $amountText")
-                                        .setTextAlignment(TextAlignment.CENTER)
-                                        .setFontSize(10f)
-                                )
-                            }
+                            document.add(
+                                Paragraph("Expense Date and Time: ${expense.getFormattedExpenseDateTime(context)}")
+                                    .setTextAlignment(TextAlignment.CENTER)
+                                    .setFontSize(10f)
+                            )
+                             
+                             // Add amount below date
+                             run {
+                                 val settingsManager = SettingsManager.getInstance(context)
+                                 val amountText = settingsManager.formatAmount(expense.amount)
+                                 document.add(
+                                     Paragraph("Amount: $amountText")
+                                         .setTextAlignment(TextAlignment.CENTER)
+                                         .setFontSize(10f)
+                                 )
+                             }
                             
                             if (expense.description.isNotBlank()) {
                                 document.add(
@@ -559,7 +524,7 @@ class PdfUtils(private val context: Context) {
                                 val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
                                 val amountText = settingsManager.formatAmount(expense.amount)
                                 cell.add(
-                                    Paragraph("Date: $dateText")
+                                    Paragraph("Expense Date and Time: $dateText")
                                         .setFontSize(7f)
                                         .setTextAlignment(TextAlignment.CENTER)
                                 )
@@ -734,7 +699,7 @@ class PdfUtils(private val context: Context) {
             for (row in 0 until rows) {
                 for (col in 0 until cols) {
                     if (nextIndex < expenses.size) {
-                        val cell = createImageCell(expenses[nextIndex], context, compressionQuality, cellWidth, cellHeight, cellPadding)
+                        val cell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, cellWidth, cellHeight, cellPadding)
                         table.addCell(cell)
                         nextIndex++
                         imagesAdded++
@@ -778,7 +743,7 @@ class PdfUtils(private val context: Context) {
             
             // Left large cell
             if (nextIndex < expenses.size) {
-                val largeCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val largeCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                 pageWidth * 0.65f - (2 * cellPadding), 
                                                 firstRowHeight - (2 * cellPadding), cellPadding)
                 firstRowTable.addCell(largeCell)
@@ -798,7 +763,7 @@ class PdfUtils(private val context: Context) {
             
             // Top right cell
             if (nextIndex < expenses.size) {
-                val topRightCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val topRightCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                   pageWidth * 0.35f - (2 * cellPadding), 
                                                   firstRowHeight/2 - (2 * cellPadding), cellPadding)
                 rightColumnTable.addCell(topRightCell)
@@ -810,7 +775,7 @@ class PdfUtils(private val context: Context) {
             
             // Bottom right cell
             if (nextIndex < expenses.size) {
-                val bottomRightCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val bottomRightCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                      pageWidth * 0.35f - (2 * cellPadding), 
                                                      firstRowHeight/2 - (2 * cellPadding), cellPadding)
                 rightColumnTable.addCell(bottomRightCell)
@@ -836,7 +801,7 @@ class PdfUtils(private val context: Context) {
             // Add the three remaining cells
             for (i in 0 until 3) {
                 if (nextIndex < expenses.size) {
-                    val cell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                    val cell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                               (pageWidth / 3) - (2 * cellPadding), 
                                               secondRowHeight - (3 * cellPadding), cellPadding)
                     secondRowTable.addCell(cell)
@@ -856,6 +821,7 @@ class PdfUtils(private val context: Context) {
          */
         private fun createImageCell(
             expense: Expense,
+            indexNumber: Int,
             context: Context,
             compressionQuality: Int,
             cellWidth: Float,
@@ -926,7 +892,7 @@ class PdfUtils(private val context: Context) {
                             val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
                             val amountText = settingsManager.formatAmount(expense.amount)
                             cell.add(
-                                Paragraph("Date: $dateText")
+                                Paragraph("Expense Date and Time: $dateText")
                                     .setFontSize(7f)
                                     .setTextAlignment(TextAlignment.CENTER)
                             )
@@ -954,6 +920,13 @@ class PdfUtils(private val context: Context) {
                                         .setItalic()
                                 )
                             }
+
+                            // Add index number below image
+                            cell.add(
+                                Paragraph("Index Number: $indexNumber")
+                                    .setFontSize(7f)
+                                    .setTextAlignment(TextAlignment.CENTER)
+                            )
                         } finally {
                             // Clean up resources
                             bitmap.recycle()
@@ -1431,277 +1404,7 @@ class PdfUtils(private val context: Context) {
             }
         }
 
-        /**
-         * Generate a PDF with all expenses (for the "All" folder view)
-         * @param context Application context
-         * @param expenses List of all expenses to include
-         * @return Generated PDF file or null if generation failed
-         */
-        fun generateAllExpensesPdf(context: Context, expenses: List<Expense>): File? {
-            try {
-                Log.d(TAG, "Generating PDF for All expenses folder")
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val pdfFile = File(context.externalCacheDir, "RecordApp_AllExpenses_$timestamp.pdf")
-                val outputStream = FileOutputStream(pdfFile)
-                
-                // Create PDF writer and document
-                val pdfWriter = PdfWriter(outputStream)
-                val pdfDocument = PdfDocument(pdfWriter)
-                val document = Document(pdfDocument, PageSize.A4)
-                
-                // Get settings
-                val settings = SettingsManager.getInstance(context)
-                val currencySymbol = settings.currencySymbol
-                val compressionQuality = settings.pdfQuality
-                
-                // Add title with better styling
-                document.add(
-                    Paragraph("All Expenses Report")
-                        .setTextAlignment(TextAlignment.CENTER)
-                        .setFontSize(18f)
-                        .setBold()
-                )
-                
-                // Add generation info
-                val dateFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                val generationInfo = "Generated on: ${dateFormatter.format(Date())}"
-                document.add(
-                    Paragraph(generationInfo)
-                        .setTextAlignment(TextAlignment.RIGHT)
-                        .setFontSize(10f)
-                        .setItalic()
-                )
-                
-                document.add(LineSeparator(SolidLine(1f)).setMarginTop(5f).setMarginBottom(10f))
-                
-                // Add summary section
-                val totalCount = expenses.size
-                val totalAmount = expenses.sumOf { it.amount }
-                
-                // Create a summary table
-                val summaryTable = Table(UnitValue.createPercentArray(floatArrayOf(30f, 70f)))
-                    .setWidth(UnitValue.createPercentValue(100f))
-                    .setBorder(null)
-                
-                // Add summary data
-                addSummaryRow(summaryTable, "Total Expenses:", totalCount.toString())
-                addSummaryRow(summaryTable, "Total Amount:", "${currencySymbol}${totalAmount}")
-                
-                // Add the summary table to the document
-                document.add(summaryTable)
-                document.add(LineSeparator(SolidLine(1f)).setMarginTop(5f).setMarginBottom(10f))
-                
-                // Group expenses by folder
-                val expensesByFolder = expenses.groupBy { it.folderName }
-                
-                // For each folder group
-                expensesByFolder.forEach { (folder, folderExpenses) ->
-                    // Add folder header
-                    document.add(
-                        Paragraph("Folder: $folder")
-                            .setTextAlignment(TextAlignment.LEFT)
-                            .setFontSize(14f)
-                            .setBold()
-                    )
-                    
-                    // Add folder stats
-                    val folderCount = folderExpenses.size
-                    val folderAmount = folderExpenses.sumOf { it.amount }
-                    document.add(
-                        Paragraph("Count: $folderCount | Total: ${currencySymbol}${folderAmount}")
-                            .setTextAlignment(TextAlignment.LEFT)
-                            .setFontSize(10f)
-                            .setItalic()
-                    )
-                    
-                    // Create expense table with 6 columns, maximizing image space
-                    val expenseTable = Table(UnitValue.createPercentArray(
-                        floatArrayOf(6f, 17f, 14f, 11f, 12f, 40f) // Image column now gets 40% of width
-                    ))
-                    .setWidth(UnitValue.createPercentValue(100f))
-                    
-                    // Add table headers
-                    expenseTable.addHeaderCell("No.")
-                    expenseTable.addHeaderCell("Date & Time")
-                    expenseTable.addHeaderCell("Serial No.")
-                    expenseTable.addHeaderCell("Amount")
-                    expenseTable.addHeaderCell("Description")
-                    expenseTable.addHeaderCell("Image")
-                    
-                    // Sort expenses by timestamp (newest first)
-                    val sortedExpenses = folderExpenses.sortedByDescending { it.timestamp }
-                    
-                    // Add expense rows
-                    sortedExpenses.forEachIndexed { index, expense ->
-                        // Index column
-                        expenseTable.addCell(
-                            Cell().add(
-                                Paragraph((index + 1).toString())
-                                    .setTextAlignment(TextAlignment.CENTER)
-                                    .setFontSize(9f)
-                            )
-                        )
-                        
-                        // Date & Time column
-                        expenseTable.addCell(
-                            Cell().add(
-                                Paragraph(expense.getFormattedTimestamp())
-                                    .setTextAlignment(TextAlignment.LEFT)
-                                    .setFontSize(9f)
-                            )
-                        )
-                        
-                        // Serial Number column
-                        expenseTable.addCell(
-                            Cell().add(
-                                Paragraph(expense.serialNumber)
-                                    .setTextAlignment(TextAlignment.LEFT)
-                                    .setFontSize(9f)
-                            )
-                        )
-                        
-                        // Amount column
-                        expenseTable.addCell(
-                            Cell().add(
-                                Paragraph("${currencySymbol}${expense.amount}")
-                                    .setTextAlignment(TextAlignment.RIGHT)
-                                    .setFontSize(9f)
-                            )
-                        )
-                        
-                        // Description column
-                        expenseTable.addCell(
-                            Cell().add(
-                                Paragraph(expense.description)
-                                    .setTextAlignment(TextAlignment.LEFT)
-                                    .setFontSize(8f)
-                            )
-                        )
-                        
-                        // Image column - show thumbnail or placeholder
-                        val imageCell = Cell().setTextAlignment(TextAlignment.CENTER)
-                        
-                        expense.imagePath?.let { uri ->
-                            try {
-                                val inputStream = context.contentResolver.openInputStream(uri)
-                                val bitmap = BitmapFactory.decodeStream(inputStream)
-                                
-                                if (bitmap != null) {
-                                    // Create much larger thumbnail for table with high quality
-                                    val thumbnailSize = 200 // Increased to 200 for maximum clarity
-                                    val scaledBitmap = Bitmap.createScaledBitmap(
-                                        bitmap,
-                                        thumbnailSize,
-                                        thumbnailSize,
-                                        true
-                                    )
-                                    
-                                    // Convert to byte array with higher quality compression
-                                    val stream = ByteArrayOutputStream()
-                                    // Force higher quality compression regardless of settings
-                                    val highQuality = Math.max(compressionQuality, 90)
-                                    scaledBitmap.compress(Bitmap.CompressFormat.JPEG, highQuality, stream)
-                                    val byteArray = stream.toByteArray()
-                                    
-                                    // Add image to cell with larger dimensions
-                                    val image = Image(ImageDataFactory.create(byteArray))
-                                        .setWidth(90f) // Increased to 90f for much larger display
-                                        .setHeight(90f) // Increased to 90f for much larger display
-                                        .setHorizontalAlignment(HorizontalAlignment.CENTER)
-                                    
-                                    imageCell.add(image)
-                                    imageCell.setPadding(2f) // Add padding around the image
-                                } else {
-                                    imageCell.add(Paragraph("✓").setFontSize(9f))
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error loading bitmap from URI", e)
-                                imageCell.add(Paragraph("✗").setFontSize(9f))
-                            }
-                        } ?: run {
-                            imageCell.add(Paragraph("-").setFontSize(9f))
-                        }
-                        
-                        expenseTable.addCell(imageCell)
-                    }
-                    
-                    // Add the table to the document
-                    document.add(expenseTable)
-                    document.add(Paragraph("\n"))
-                }
-                
-                // After all folders are processed in tables, add full-size images on additional pages
-                document.add(Paragraph("\n\nFull-Size Images").setFontSize(16f).setBold().setTextAlignment(TextAlignment.CENTER))
-                document.add(LineSeparator(SolidLine(1f)).setMarginTop(5f).setMarginBottom(10f))
-                document.add(Paragraph("The following pages contain full-size images for better visibility.").setFontSize(10f).setItalic())
-                
-                // Add each image in full resolution
-                var imageCount = 0
-                expenses.forEach { expense ->
-                    expense.imagePath?.let { uri ->
-                        try {
-                            val inputStream = context.contentResolver.openInputStream(uri)
-                            val bitmap = BitmapFactory.decodeStream(inputStream)
-                            
-                            if (bitmap != null) {
-                                // Add page break before each image (except the first one)
-                                if (imageCount > 0) {
-                                    document.add(AreaBreak())
-                                }
-                                imageCount++
-                                
-                                // Add image header with details
-                                document.add(
-                                    Paragraph("Image ${imageCount} - ${expense.folderName}")
-                                        .setTextAlignment(TextAlignment.CENTER)
-                                        .setFontSize(14f)
-                                        .setBold()
-                                )
-                                document.add(
-                                    Paragraph("Date: ${expense.getFormattedTimestamp()} | Serial: ${expense.serialNumber}")
-                                        .setTextAlignment(TextAlignment.CENTER)
-                                        .setFontSize(10f)
-                                        .setItalic()
-                                )
-                                
-                                // Convert to byte array with high quality
-                                val stream = ByteArrayOutputStream()
-                                val highQuality = 95 // Very high quality for full images
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, highQuality, stream)
-                                val byteArray = stream.toByteArray()
-                                
-                                // Create full page width image
-                                val image = Image(ImageDataFactory.create(byteArray))
-                                    .setWidth(UnitValue.createPercentValue(90f)) // 90% of page width
-                                    .setHorizontalAlignment(HorizontalAlignment.CENTER)
-                                
-                                document.add(image)
-                                
-                                // Add description if available
-                                if (expense.description.isNotBlank()) {
-                                    document.add(
-                                        Paragraph("Description: ${expense.description}")
-                                            .setTextAlignment(TextAlignment.CENTER)
-                                            .setFontSize(10f)
-                                    )
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error adding full-size image", e)
-                        }
-                    }
-                }
-                
-                // Close the document
-                document.close()
-                outputStream.close()
-                
-                return pdfFile
-            } catch (e: Exception) {
-                Log.e(TAG, "Error generating PDF for All expenses", e)
-                return null
-            }
-        }
+        
 
         /**
          * Generate a PDF with all expenses (for the "All" folder view) with grid layout
@@ -2065,13 +1768,7 @@ class PdfUtils(private val context: Context) {
     /**
      * Generate a PDF document for a folder of images
      */
-    fun generateFolderPdf(
-        outputStream: OutputStream,
-        folderName: String,
-        imageUris: List<Uri>,
-        descriptions: Map<Uri, String?>,
-        serialNumbers: Map<Uri, String>
-    ) {
+
         // Create PDF document
         val document = createDocument(outputStream)
         
