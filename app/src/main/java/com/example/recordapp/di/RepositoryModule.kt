@@ -12,7 +12,7 @@ import com.example.recordapp.repository.AuthRepository
 import com.example.recordapp.util.CsvUtils
 import com.example.recordapp.util.PdfUtils
 import com.example.recordapp.util.SignInHistoryManager
-
+import com.example.recordapp.util.ReportGenerator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -83,5 +83,16 @@ object RepositoryModule {
         return SignInHistoryManager(context)
     }
     
-
+    /**
+     * Provides ReportGenerator as a singleton
+     */
+    @Provides
+    @Singleton
+    fun provideReportGenerator(
+        @ApplicationContext context: Context,
+        csvUtils: CsvUtils,
+        pdfUtils: PdfUtils
+    ): ReportGenerator {
+        return ReportGenerator(context, csvUtils, pdfUtils)
+    }
 } 
