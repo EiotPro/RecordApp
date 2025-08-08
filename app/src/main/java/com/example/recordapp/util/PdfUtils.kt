@@ -407,22 +407,27 @@ class PdfUtils(private val context: Context) {
                             
                             // Add metadata below image
                             document.add(
-                                Paragraph("Date: ${expense.getFormattedTimestamp()}")
+                                Paragraph("Index Number: ${index + 1}")
                                     .setTextAlignment(TextAlignment.CENTER)
                                     .setFontSize(10f)
                                     .setMarginTop(10f)
                             )
-
-                            // Add amount below date
-                            run {
-                                val settingsManager = SettingsManager.getInstance(context)
-                                val amountText = settingsManager.formatAmount(expense.amount)
-                                document.add(
-                                    Paragraph("Amount: $amountText")
-                                        .setTextAlignment(TextAlignment.CENTER)
-                                        .setFontSize(10f)
-                                )
-                            }
+                            document.add(
+                                Paragraph("Expense Date and Time: ${expense.getFormattedExpenseDateTime(context)}")
+                                    .setTextAlignment(TextAlignment.CENTER)
+                                    .setFontSize(10f)
+                            )
+                             
+                             // Add amount below date
+                             run {
+                                 val settingsManager = SettingsManager.getInstance(context)
+                                 val amountText = settingsManager.formatAmount(expense.amount)
+                                 document.add(
+                                     Paragraph("Amount: $amountText")
+                                         .setTextAlignment(TextAlignment.CENTER)
+                                         .setFontSize(10f)
+                                 )
+                             }
                             
                             if (expense.description.isNotBlank()) {
                                 document.add(
@@ -559,7 +564,7 @@ class PdfUtils(private val context: Context) {
                                 val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
                                 val amountText = settingsManager.formatAmount(expense.amount)
                                 cell.add(
-                                    Paragraph("Date: $dateText")
+                                    Paragraph("Expense Date and Time: $dateText")
                                         .setFontSize(7f)
                                         .setTextAlignment(TextAlignment.CENTER)
                                 )
@@ -734,7 +739,7 @@ class PdfUtils(private val context: Context) {
             for (row in 0 until rows) {
                 for (col in 0 until cols) {
                     if (nextIndex < expenses.size) {
-                        val cell = createImageCell(expenses[nextIndex], context, compressionQuality, cellWidth, cellHeight, cellPadding)
+                        val cell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, cellWidth, cellHeight, cellPadding)
                         table.addCell(cell)
                         nextIndex++
                         imagesAdded++
@@ -778,7 +783,7 @@ class PdfUtils(private val context: Context) {
             
             // Left large cell
             if (nextIndex < expenses.size) {
-                val largeCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val largeCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                 pageWidth * 0.65f - (2 * cellPadding), 
                                                 firstRowHeight - (2 * cellPadding), cellPadding)
                 firstRowTable.addCell(largeCell)
@@ -798,7 +803,7 @@ class PdfUtils(private val context: Context) {
             
             // Top right cell
             if (nextIndex < expenses.size) {
-                val topRightCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val topRightCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                   pageWidth * 0.35f - (2 * cellPadding), 
                                                   firstRowHeight/2 - (2 * cellPadding), cellPadding)
                 rightColumnTable.addCell(topRightCell)
@@ -810,7 +815,7 @@ class PdfUtils(private val context: Context) {
             
             // Bottom right cell
             if (nextIndex < expenses.size) {
-                val bottomRightCell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                val bottomRightCell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                                      pageWidth * 0.35f - (2 * cellPadding), 
                                                      firstRowHeight/2 - (2 * cellPadding), cellPadding)
                 rightColumnTable.addCell(bottomRightCell)
@@ -836,7 +841,7 @@ class PdfUtils(private val context: Context) {
             // Add the three remaining cells
             for (i in 0 until 3) {
                 if (nextIndex < expenses.size) {
-                    val cell = createImageCell(expenses[nextIndex], context, compressionQuality, 
+                    val cell = createImageCell(expenses[nextIndex], nextIndex + 1, context, compressionQuality, 
                                               (pageWidth / 3) - (2 * cellPadding), 
                                               secondRowHeight - (3 * cellPadding), cellPadding)
                     secondRowTable.addCell(cell)
@@ -856,6 +861,7 @@ class PdfUtils(private val context: Context) {
          */
         private fun createImageCell(
             expense: Expense,
+            indexNumber: Int,
             context: Context,
             compressionQuality: Int,
             cellWidth: Float,
@@ -926,7 +932,7 @@ class PdfUtils(private val context: Context) {
                             val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
                             val amountText = settingsManager.formatAmount(expense.amount)
                             cell.add(
-                                Paragraph("Date: $dateText")
+                                Paragraph("Expense Date and Time: $dateText")
                                     .setFontSize(7f)
                                     .setTextAlignment(TextAlignment.CENTER)
                             )
@@ -954,6 +960,13 @@ class PdfUtils(private val context: Context) {
                                         .setItalic()
                                 )
                             }
+
+                            // Add index number below image
+                            cell.add(
+                                Paragraph("Index Number: $indexNumber")
+                                    .setFontSize(7f)
+                                    .setTextAlignment(TextAlignment.CENTER)
+                            )
                         } finally {
                             // Clean up resources
                             bitmap.recycle()
