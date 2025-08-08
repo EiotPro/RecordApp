@@ -412,6 +412,17 @@ class PdfUtils(private val context: Context) {
                                     .setFontSize(10f)
                                     .setMarginTop(10f)
                             )
+
+                            // Add amount below date
+                            run {
+                                val settingsManager = SettingsManager.getInstance(context)
+                                val amountText = settingsManager.formatAmount(expense.amount)
+                                document.add(
+                                    Paragraph("Amount: $amountText")
+                                        .setTextAlignment(TextAlignment.CENTER)
+                                        .setFontSize(10f)
+                                )
+                            }
                             
                             if (expense.description.isNotBlank()) {
                                 document.add(
@@ -514,7 +525,7 @@ class PdfUtils(private val context: Context) {
                                 // Calculate image dimensions to fit cell while preserving aspect ratio
                                 val imageAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
                                 val availableCellWidth = cellWidth - (2 * cellPadding)
-                                val availableCellHeight = cellHeight - (2 * cellPadding) - 40f // Reserve space for caption
+                                val availableCellHeight = cellHeight - (2 * cellPadding) - 70f // Reserve extra space for captions (date, amount, description, serial)
                                 
                                 var finalImageWidth = availableCellWidth
                                 var finalImageHeight = finalImageWidth / imageAspectRatio
@@ -542,6 +553,21 @@ class PdfUtils(private val context: Context) {
                                 
                                 // Add image
                                 cell.add(image)
+
+                                // Add date and amount captions
+                                val settingsManager = SettingsManager.getInstance(context)
+                                val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
+                                val amountText = settingsManager.formatAmount(expense.amount)
+                                cell.add(
+                                    Paragraph("Date: $dateText")
+                                        .setFontSize(7f)
+                                        .setTextAlignment(TextAlignment.CENTER)
+                                )
+                                cell.add(
+                                    Paragraph("Amount: $amountText")
+                                        .setFontSize(7f)
+                                        .setTextAlignment(TextAlignment.CENTER)
+                                )
                                 
                                 // Add metadata caption
                                 if (expense.description.isNotBlank()) {
@@ -871,7 +897,7 @@ class PdfUtils(private val context: Context) {
                             // Calculate image dimensions to fit cell while preserving aspect ratio
                             val imageAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
                             val availableCellWidth = cellWidth - (2 * cellPadding)
-                            val availableCellHeight = cellHeight - (2 * cellPadding) - 30f // Reserve space for caption
+                            val availableCellHeight = cellHeight - (2 * cellPadding) - 60f // Reserve extra space for captions (date, amount, description, serial)
                             
                             var finalImageWidth = availableCellWidth
                             var finalImageHeight = finalImageWidth / imageAspectRatio
@@ -894,6 +920,21 @@ class PdfUtils(private val context: Context) {
                             
                             // Add image
                             cell.add(image)
+
+                            // Add date and amount captions under image
+                            val settingsManager = SettingsManager.getInstance(context)
+                            val dateText = expense.getFormattedExpenseDateTime(context, includeTime = false)
+                            val amountText = settingsManager.formatAmount(expense.amount)
+                            cell.add(
+                                Paragraph("Date: $dateText")
+                                    .setFontSize(7f)
+                                    .setTextAlignment(TextAlignment.CENTER)
+                            )
+                            cell.add(
+                                Paragraph("Amount: $amountText")
+                                    .setFontSize(7f)
+                                    .setTextAlignment(TextAlignment.CENTER)
+                            )
                             
                             // Add metadata caption
                             if (expense.description.isNotBlank()) {
@@ -2135,6 +2176,14 @@ class PdfUtils(private val context: Context) {
     fun createDocument(outputStream: OutputStream): Document {
         val pdfWriter = PdfWriter(outputStream)
         val pdfDocument = PdfDocument(pdfWriter)
+        // Set basic PDF document properties
+        pdfDocument.documentInfo.apply {
+            title = "RecordApp Export"
+            author = "RecordApp"
+            subject = "Expenses Report"
+            keywords = "RecordApp, Expenses, PDF"
+            creator = "RecordApp"
+        }
         return Document(pdfDocument, PageSize.A4)
     }
     
@@ -2151,6 +2200,14 @@ class PdfUtils(private val context: Context) {
         // Create PDF document
         PdfWriter(file).use { writer ->
             PdfDocument(writer).use { pdfDoc ->
+                // Set document info for this export too
+                pdfDoc.documentInfo.apply {
+                    title = "RecordApp Users Export"
+                    author = "RecordApp"
+                    subject = "Users Report"
+                    keywords = "RecordApp, Users, PDF"
+                    creator = "RecordApp"
+                }
                 Document(pdfDoc, PageSize.A4).use { document ->
                     // Add title
                     val title = Paragraph("User Management Report")
